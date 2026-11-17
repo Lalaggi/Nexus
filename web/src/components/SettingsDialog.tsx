@@ -1,14 +1,18 @@
 import { useEffect, useState } from 'react';
 import {
+  BarChart3,
   Check,
-  Cpu,
+  ChevronRight,
+  Code,
+  Copy,
   ExternalLink,
-  HardDrive,
+  FileText,
   KeyRound,
   Loader2,
   ShieldAlert,
   ShieldCheck,
   Terminal,
+  User,
   X,
 } from 'lucide-react';
 import type { SettingsSnapshot } from '../types';
@@ -19,6 +23,8 @@ export interface SettingsPatch {
   temperature: number;
   nim_api_key?: string;
   openrouter_api_key?: string;
+  custom_instructions?: string;
+  custom_model_id?: string;
   clear_nim?: boolean;
   clear_openrouter?: boolean;
 }
@@ -30,6 +36,14 @@ export interface TestResult {
   label?: string;
   model_visible?: boolean;
 }
+
+type Category = 'provider' | 'personalisation' | 'stats';
+
+const CATEGORIES: Array<{ id: Category; label: string; icon: React.ElementType }> = [
+  { id: 'provider', label: 'Provider', icon: KeyRound },
+  { id: 'personalisation', label: 'Personalisation', icon: User },
+  { id: 'stats', label: 'Stats', icon: BarChart3 },
+];
 
 export default function SettingsDialog({
   open,
@@ -51,22 +65,28 @@ export default function SettingsDialog({
   const [temperature, setTemperature] = useState(0.6);
   const [nimKey, setNimKey] = useState('');
   const [openrouterKey, setOpenrouterKey] = useState('');
+  const [customInstructions, setCustomInstructions] = useState('');
+  const [customModelId, setCustomModelId] = useState('');
   const [clearNim, setClearNim] = useState(false);
   const [clearOpenrouter, setClearOpenrouter] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [test, setTest] = useState<TestResult | null>(null);
+  const [category, setCategory] = useState<Category>('provider');
 
   useEffect(() => {
     if (!open || !settings) return;
     setProvider(settings.provider);
     setUserName(settings.user_name);
     setTemperature(settings.temperature);
+    setCustomInstructions(settings.custom_instructions);
+    setCustomModelId(settings.custom_model_id);
     setNimKey('');
     setOpenrouterKey('');
     setClearNim(false);
     setClearOpenrouter(false);
     setTest(null);
+    setCategory('provider');
   }, [open, settings]);
 
   useEffect(() => {
@@ -91,6 +111,8 @@ export default function SettingsDialog({
         temperature,
         nim_api_key: nimKey.trim() || undefined,
         openrouter_api_key: openrouterKey.trim() || undefined,
+        custom_instructions: customInstructions.trim() || undefined,
+        custom_model_id: customModelId.trim() || undefined,
         clear_nim: clearNim,
         clear_openrouter: clearOpenrouter,
       });
@@ -116,6 +138,8 @@ export default function SettingsDialog({
     }
   };
 
+  const Icon = CATEGORIES.find((c) => c.id === category)?.icon ?? KeyRound;
+
   return (
     <div className="dialog-backdrop" onClick={onClose}>
       <div className="dialog" role="dialog" aria-modal="true" aria-label="Settings" onClick={(event) => event.stopPropagation()}>
@@ -129,214 +153,62 @@ export default function SettingsDialog({
           </button>
         </header>
 
-        <div className="dialog-body">
-          <section className="settings-section">
-            <div className="section-title">
-              <Cpu size={17} />
-              <h3>Model provider</h3>
-            </div>
-            <p className="section-note">
-              One curated model, served by either provider. Auto uses NVIDIA NIM when a key is
-              present, then falls back to OpenRouter.
-            </p>
-            <div className="provider-grid">
-              {(
-                [
-                  ['auto', 'Auto', 'Best available key'],
-                  ['nim', 'NVIDIA NIM', 'Free developer credits'],
-                  ['openrouter', 'OpenRouter', 'Free :free endpoint'],
-                ] as const
-              ).map(([value, label, hint]) => (
+        <div className="dialog-body settings-layout">
+          <nav className="settings-sidebar">
+            {CATEGORIES.map((cat) => {
+              const active = category === cat.id;
+              const Icon = cat.icon;
+              return (
                 <button
-                  key={value}
+                  key={cat.id}
                   type="button"
-                  className={`provider-card ${provider === value ? 'is-active' : ''}`}
-                  onClick={() => setProvider(value)}
+                  className={`settings-cat ${active ? 'is-active' : ''}`}
+                  onClick={() => setCategory(cat.id)}
                 >
-                  <span className="provider-check">{provider === value && <Check size={13} />}</span>
-                  <strong>{label}</strong>
-                  <span>{hint}</span>
+                  <Icon size={15} />
+                  <span>{cat.label}</span>
+                  {active && <ChevronRight size={12} />}
                 </button>
-              ))}
-            </div>
+              );
+            })}
+          </nav>
 
-            <div className="key-grid">
-              <label className="field">
-                <span className="field-label">
-                  NVIDIA NIM API key
-                  {settings.keys.nim.set && !clearNim && <em>saved {settings.keys.nim.hint}</em>}
-                </span>
-                <input
-                  type="password"
-                  value={nimKey}
-                  onChange={(event) => {
-                    setNimKey(event.target.value);
-                    if (event.target.value) setClearNim(false);
-                  }}
-                  placeholder={settings.keys.nim.set ? 'Paste a new key to replace' : 'nvapi-…'}
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-                <span className="field-foot">
-                  <a href={settings.providers.find((p) => p.id === 'nim')?.docs} target="_blank" rel="noreferrer">
-                    Get a free NIM key <ExternalLink size={11} />
-                  </a>
-                  {settings.keys.nim.set && (
-                    <button
-                      type="button"
-                      className={clearNim ? 'danger' : ''}
-                      onClick={() => setClearNim((value) => !value)}
-                    >
-                      {clearNim ? 'Will be removed' : 'Remove'}
-                    </button>
-                  )}
-                </span>
-              </label>
-
-              <label className="field">
-                <span className="field-label">
-                  OpenRouter API key
-                  {settings.keys.openrouter.set && !clearOpenrouter && (
-                    <em>saved {settings.keys.openrouter.hint}</em>
-                  )}
-                </span>
-                <input
-                  type="password"
-                  value={openrouterKey}
-                  onChange={(event) => {
-                    setOpenrouterKey(event.target.value);
-                    if (event.target.value) setClearOpenrouter(false);
-                  }}
-                  placeholder={settings.keys.openrouter.set ? 'Paste a new key to replace' : 'sk-or-…'}
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-                <span className="field-foot">
-                  <a
-                    href={settings.providers.find((p) => p.id === 'openrouter')?.docs}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Get an OpenRouter key <ExternalLink size={11} />
-                  </a>
-                  {settings.keys.openrouter.set && (
-                    <button
-                      type="button"
-                      className={clearOpenrouter ? 'danger' : ''}
-                      onClick={() => setClearOpenrouter((value) => !value)}
-                    >
-                      {clearOpenrouter ? 'Will be removed' : 'Remove'}
-                    </button>
-                  )}
-                </span>
-              </label>
-            </div>
-
-            <div className="test-row">
-              <button type="button" className="btn-tonal" onClick={runTest} disabled={testing}>
-                {testing ? <Loader2 size={15} className="spin" /> : <KeyRound size={15} />}
-                Test connection
-              </button>
-              {test && (
-                <span className={`test-result ${test.ok ? 'ok' : 'bad'}`}>
-                  {test.ok ? <Check size={14} /> : <ShieldAlert size={14} />}
-                  {test.ok ? test.detail : test.error}
-                </span>
-              )}
-            </div>
-          </section>
-
-          <section className="settings-section">
-            <div className="section-title">
-              <KeyRound size={17} />
-              <h3>Assistant</h3>
-            </div>
-            <div className="two-col">
-              <label className="field">
-                <span className="field-label">Your name</span>
-                <input
-                  type="text"
-                  value={userName}
-                  onChange={(event) => setUserName(event.target.value)}
-                  maxLength={60}
-                />
-              </label>
-              <label className="field">
-                <span className="field-label">
-                  Temperature <em>{temperature.toFixed(1)}</em>
-                </span>
-                <input
-                  type="range"
-                  min={0}
-                  max={1.5}
-                  step={0.1}
-                  value={temperature}
-                  onChange={(event) => setTemperature(Number(event.target.value))}
-                />
-              </label>
-            </div>
-            <p className="section-note">
-              {settings.model.name} · {settings.model.subtitle}. Up to {settings.max_tool_steps} tool
-              steps per turn.
-            </p>
-          </section>
-
-          <section className="settings-section">
-            <div className="section-title">
-              <Terminal size={17} />
-              <h3>Code sandbox</h3>
-              <span className={`status-pill ${sandbox.available ? 'good' : 'warn'}`}>
-                {sandbox.available ? <ShieldCheck size={13} /> : <ShieldAlert size={13} />}
-                {sandbox.available ? 'Ready' : 'Not ready'}
-              </span>
-            </div>
-            <p className="section-note">{sandbox.detail}</p>
-            <div className="kv">
-              <span>Image</span>
-              <code>{sandbox.image_name}</code>
-            </div>
-            {sandbox.version && (
-              <div className="kv">
-                <span>Runtime</span>
-                <code>{sandbox.version}</code>
-              </div>
+          <main className="settings-content">
+            {category === 'provider' && (
+              <ProviderPanel
+                settings={settings}
+                provider={provider}
+                setProvider={setProvider}
+                nimKey={nimKey}
+                setNimKey={setNimKey}
+                openrouterKey={openrouterKey}
+                setOpenrouterKey={setOpenrouterKey}
+                customModelId={customModelId}
+                setCustomModelId={setCustomModelId}
+                clearNim={clearNim}
+                setClearNim={setClearNim}
+                clearOpenrouter={clearOpenrouter}
+                setClearOpenrouter={setClearOpenrouter}
+                runTest={runTest}
+                testing={testing}
+                test={test}
+              />
             )}
-            {!sandbox.available && (
-              <div className="command-box">
-                <code>./scripts/build-sandbox.sh</code>
-              </div>
+            {category === 'personalisation' && (
+              <PersonalisationPanel
+                settings={settings}
+                userName={userName}
+                setUserName={setUserName}
+                temperature={temperature}
+                setTemperature={setTemperature}
+                customInstructions={customInstructions}
+                setCustomInstructions={setCustomInstructions}
+              />
             )}
-            <p className="section-note tiny">
-              Rootless Podman · no network · all capabilities dropped · read-only root · memory and
-              PID limits.
-            </p>
-          </section>
-
-          <section className="settings-section">
-            <div className="section-title">
-              <HardDrive size={17} />
-              <h3>Storage & search</h3>
-            </div>
-            <div className="kv">
-              <span>Uploads</span>
-              <code>{settings.paths.uploads}</code>
-            </div>
-            <div className="kv">
-              <span>Outputs</span>
-              <code>{settings.paths.outputs}</code>
-            </div>
-            <div className="kv">
-              <span>SearXNG</span>
-              <span className={`inline-status ${searxngOk === false ? 'bad' : 'good'}`}>
-                {searxngOk === null ? 'Checking…' : searxngOk ? 'Connected' : 'Unreachable'}
-              </span>
-            </div>
-            <p className="section-note tiny">
-              API keys are stored in the local SQLite database. For extra safety set
-              <code> NVIDIA_API_KEY </code> or <code> OPENROUTER_API_KEY </code> in <code>.env</code>{' '}
-              instead.
-            </p>
-          </section>
+            {category === 'stats' && (
+              <StatsPanel settings={settings} sandbox={sandbox} searxngOk={searxngOk} />
+            )}
+          </main>
         </div>
 
         <footer className="dialog-foot">
@@ -353,5 +225,326 @@ export default function SettingsDialog({
         </footer>
       </div>
     </div>
+  );
+}
+
+function ProviderPanel({
+  settings,
+  provider,
+  setProvider,
+  nimKey,
+  setNimKey,
+  openrouterKey,
+  setOpenrouterKey,
+  customModelId,
+  setCustomModelId,
+  clearNim,
+  setClearNim,
+  clearOpenrouter,
+  setClearOpenrouter,
+  runTest,
+  testing,
+  test,
+}: {
+  settings: SettingsSnapshot;
+  provider: 'auto' | 'nim' | 'openrouter';
+  setProvider: (value: 'auto' | 'nim' | 'openrouter') => void;
+  nimKey: string;
+  setNimKey: (value: string) => void;
+  openrouterKey: string;
+  setOpenrouterKey: (value: string) => void;
+  customModelId: string;
+  setCustomModelId: (value: string) => void;
+  clearNim: boolean;
+  setClearNim: (value: boolean) => void;
+  clearOpenrouter: boolean;
+  setClearOpenrouter: (value: boolean) => void;
+  runTest: () => void;
+  testing: boolean;
+  test: TestResult | null;
+}) {
+  return (
+    <section className="settings-section">
+      <div className="section-title">
+        <KeyRound size={17} />
+        <h3>Model provider</h3>
+      </div>
+      <p className="section-note">
+        One curated model (Nemotron 3.5 VL Super), served by either NVIDIA NIM or OpenRouter. Auto
+        uses NIM when a key is present, then falls back to OpenRouter.
+      </p>
+
+      <div className="provider-grid">
+        {(
+          [
+            ['auto', 'Auto', 'Best available key'],
+            ['nim', 'NVIDIA NIM', 'Free developer credits'],
+            ['openrouter', 'OpenRouter', 'Free :free endpoint'],
+          ] as const
+        ).map(([value, label, hint]) => (
+          <button
+            key={value}
+            type="button"
+            className={`provider-card ${provider === value ? 'is-active' : ''}`}
+            onClick={() => setProvider(value)}
+          >
+            <span className="provider-check">{provider === value && <Check size={13} />}</span>
+            <strong>{label}</strong>
+            <span>{hint}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="key-grid">
+        <label className="field">
+          <span className="field-label">
+            NVIDIA NIM API key
+            {settings.keys.nim.set && !clearNim && <em>saved {settings.keys.nim.hint}</em>}
+          </span>
+          <input
+            type="password"
+            value={nimKey}
+            onChange={(event) => {
+              setNimKey(event.target.value);
+              if (event.target.value) setClearNim(false);
+            }}
+            placeholder={settings.keys.nim.set ? 'Paste a new key to replace' : 'nvapi-…'}
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <span className="field-foot">
+            <a href={settings.providers.find((p) => p.id === 'nim')?.docs} target="_blank" rel="noreferrer">
+              Get a free NIM key <ExternalLink size={11} />
+            </a>
+            {settings.keys.nim.set && (
+              <button
+                type="button"
+                className={clearNim ? 'danger' : ''}
+                onClick={() => setClearNim(!clearNim)}
+              >
+                {clearNim ? 'Will be removed' : 'Remove'}
+              </button>
+            )}
+          </span>
+        </label>
+
+        <label className="field">
+          <span className="field-label">
+            OpenRouter API key
+            {settings.keys.openrouter.set && !clearOpenrouter && (
+              <em>saved {settings.keys.openrouter.hint}</em>
+            )}
+          </span>
+          <input
+            type="password"
+            value={openrouterKey}
+            onChange={(event) => {
+              setOpenrouterKey(event.target.value);
+              if (event.target.value) setClearOpenrouter(false);
+            }}
+            placeholder={settings.keys.openrouter.set ? 'Paste a new key to replace' : 'sk-or-…'}
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <span className="field-foot">
+            <a
+              href={settings.providers.find((p) => p.id === 'openrouter')?.docs}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Get an OpenRouter key <ExternalLink size={11} />
+            </a>
+            {settings.keys.openrouter.set && (
+              <button
+                type="button"
+                className={clearOpenrouter ? 'danger' : ''}
+                onClick={() => setClearOpenrouter(!clearOpenrouter)}
+              >
+                {clearOpenrouter ? 'Will be removed' : 'Remove'}
+              </button>
+            )}
+          </span>
+        </label>
+      </div>
+
+      <label className="field">
+        <span className="field-label">Custom model ID</span>
+        <input
+          type="text"
+          value={customModelId}
+          onChange={(event) => setCustomModelId(event.target.value)}
+          placeholder="e.g. nvidia/nemotron-3.5-super-vl-120b-a12b"
+          spellCheck={false}
+        />
+        <span className="field-foot">
+          Override the default model ID. Leave empty to use the provider default.
+        </span>
+      </label>
+
+      <div className="test-row">
+        <button type="button" className="btn-tonal" onClick={runTest} disabled={testing}>
+          {testing ? <Loader2 size={15} className="spin" /> : <KeyRound size={15} />}
+          Test connection
+        </button>
+        {test && (
+          <span className={`test-result ${test.ok ? 'ok' : 'bad'}`}>
+            {test.ok ? <Check size={14} /> : <ShieldAlert size={14} />}
+            {test.ok ? test.detail : test.error}
+          </span>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function PersonalisationPanel({
+  settings,
+  userName,
+  setUserName,
+  temperature,
+  setTemperature,
+  customInstructions,
+  setCustomInstructions,
+}: {
+  settings: SettingsSnapshot;
+  userName: string;
+  setUserName: (value: string) => void;
+  temperature: number;
+  setTemperature: (value: number) => void;
+  customInstructions: string;
+  setCustomInstructions: (value: string) => void;
+}) {
+  return (
+    <>
+      <section className="settings-section">
+        <div className="section-title">
+          <User size={17} />
+          <h3>Assistant</h3>
+        </div>
+        <div className="two-col">
+          <label className="field">
+            <span className="field-label">Your name</span>
+            <input
+              type="text"
+              value={userName}
+              onChange={(event) => setUserName(event.target.value)}
+              maxLength={60}
+            />
+          </label>
+          <label className="field">
+            <span className="field-label">
+              Temperature <em>{temperature.toFixed(1)}</em>
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={1.5}
+              step={0.1}
+              value={temperature}
+              onChange={(event) => setTemperature(Number(event.target.value))}
+            />
+          </label>
+        </div>
+        <p className="section-note">
+          {settings.model.name} · {settings.model.subtitle}. Up to {settings.max_tool_steps} tool
+          steps per turn.
+        </p>
+      </section>
+
+      <section className="settings-section">
+        <div className="section-title">
+          <FileText size={17} />
+          <h3>Custom instructions / About me</h3>
+        </div>
+        <textarea
+          className="custom-instructions"
+          value={customInstructions}
+          onChange={(event) => setCustomInstructions(event.target.value)}
+          rows={6}
+          placeholder="e.g. You mainly use nvim as your code editor. Never recommend nano. Prefer concise answers."
+          spellCheck={false}
+        />
+        <p className="section-note">
+          Permanent instructions that are included in every conversation. Use these to set lasting
+          preferences (for example, your preferred editor, operating system, or answer style). Keep
+          it short — these are sent with every message.
+        </p>
+      </section>
+    </>
+  );
+}
+
+function StatsPanel({
+  settings,
+  sandbox,
+  searxngOk,
+}: {
+  settings: SettingsSnapshot;
+  sandbox: SettingsSnapshot['sandbox'];
+  searxngOk: boolean | null;
+}) {
+  return (
+    <>
+      <section className="settings-section">
+        <div className="section-title">
+          <Terminal size={17} />
+          <h3>Code sandbox</h3>
+          <span className={`status-pill ${sandbox.available ? 'good' : 'warn'}`}>
+            {sandbox.available ? <ShieldCheck size={13} /> : <ShieldAlert size={13} />}
+            {sandbox.available ? 'Ready' : 'Not ready'}
+          </span>
+        </div>
+        <p className="section-note">{sandbox.detail}</p>
+        <div className="kv">
+          <span>Mode</span>
+          <code>{sandbox.mode}</code>
+        </div>
+        {sandbox.version && (
+          <div className="kv">
+            <span>Runtime</span>
+            <code>{sandbox.version}</code>
+          </div>
+        )}
+        <div className="kv">
+          <span>Image</span>
+          <code>{sandbox.image_name}</code>
+        </div>
+        {!sandbox.available && (
+          <div className="command-box">
+            <code>./scripts/build-sandbox.sh</code>
+          </div>
+        )}
+        <p className="section-note tiny">
+          Rootless Podman · all capabilities dropped · read-only root · memory and PID limits ·
+          LAN/host egress blocked by nftables (when dedicated user is set up).
+        </p>
+      </section>
+
+      <section className="settings-section">
+        <div className="section-title">
+          <BarChart3 size={17} />
+          <h3>Storage & search</h3>
+        </div>
+        <div className="kv">
+          <span>Uploads</span>
+          <code>{settings.paths.uploads}</code>
+        </div>
+        <div className="kv">
+          <span>Outputs</span>
+          <code>{settings.paths.outputs}</code>
+        </div>
+        <div className="kv">
+          <span>SearXNG</span>
+          <span className={`inline-status ${searxngOk === false ? 'bad' : 'good'}`}>
+            {searxngOk === null ? 'Checking…' : searxngOk ? 'Connected' : 'Unreachable'}
+          </span>
+        </div>
+        <p className="section-note tiny">
+          API keys are stored in the local SQLite database. For extra safety set
+          <code> NVIDIA_API_KEY </code> or <code> OPENROUTER_API_KEY </code> in <code>.env</code>{' '}
+          instead.
+        </p>
+      </section>
+    </>
   );
 }

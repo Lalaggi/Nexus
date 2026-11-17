@@ -7,7 +7,7 @@ from datetime import datetime
 from .config import CONFIG
 
 
-def system_prompt(notes: list[dict] | None = None) -> str:
+def system_prompt(notes: list[dict] | None = None, custom_instructions: str = "") -> str:
     today = datetime.now().strftime("%A, %B %d, %Y")
     sandbox_section = (
         """## Linux sandbox
@@ -45,6 +45,13 @@ The sandbox is currently unavailable. Do not pretend code ran.
             "(for example, a preferred editor). Do not save trivial or conversation-specific details.\n"
         )
 
+    custom_instructions_section = ""
+    if custom_instructions.strip():
+        custom_instructions_section = (
+            "## Custom instructions\n"
+            f"{custom_instructions.strip()}\n\n"
+        )
+
     return f"""You are {CONFIG.assistant_name}, an AI assistant. You are talking with {CONFIG.user_name}. Today is {today}.
 
 You are practical, direct, and genuinely useful. You have real tools — use them instead of guessing.
@@ -72,6 +79,7 @@ Use the link returned by write_file. Never claim a file exists unless you actual
 
 {sandbox_section}
 {notes_section}
+{custom_instructions_section}
 ## Boundaries
 - You have one curated model and no hidden capabilities beyond these tools.
 - If you are unsure, say so and use search or ask a focused clarifying question.

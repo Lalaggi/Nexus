@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FolderOpen,
   ListTodo,
@@ -51,6 +51,7 @@ export default function App() {
   const [boot, setBoot] = useState<Boot>('loading');
   const [bootError, setBootError] = useState('');
   const [settings, setSettings] = useState<SettingsSnapshot | null>(null);
+  const [selectedModelId, setSelectedModelId] = useState<string>('');
   const [searxngOk, setSearxngOk] = useState<boolean | null>(null);
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChat, setActiveChat] = useState<Chat | null>(null);
@@ -74,6 +75,15 @@ export default function App() {
   const abortRef = useRef<AbortController | null>(null);
   const activeIdRef = useRef<string | null>(null);
   const streamingIdRef = useRef<string | null>(null);
+
+  const availableModels = useMemo(() => {
+    if (!settings) return [];
+    const models = [...settings.models];
+    if (settings.custom_model_id && !models.find((m) => m.id === settings.custom_model_id)) {
+      models.push({ id: settings.custom_model_id, name: settings.custom_model_id });
+    }
+    return models;
+  }, [settings]);
   const toastTimer = useRef<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const loadChatRef = useRef<(id: string) => Promise<void>>(async () => {});
@@ -176,6 +186,7 @@ export default function App() {
         api<Chat[]>('/api/chats'),
       ]);
       setSettings(snapshot);
+      setSelectedModelId(snapshot.custom_model_id || snapshot.model.id);
       setChats(list);
       setBoot('ready');
       const id = new URLSearchParams(window.location.search).get('c');
@@ -732,6 +743,15 @@ export default function App() {
                 streaming={streaming}
                 providerName={providerLabel(settings)}
                 providerReady={providerReady}
+                models={availableModels}
+                selectedModelId={selectedModelId}
+                onModelChange={(modelId) => {
+                  if (modelId === 'custom') {
+                    setSettingsOpen(true);
+                    return;
+                  }
+                  setSelectedModelId(modelId);
+                }}
                 onSend={() => void send()}
                 onStop={stopStream}
                 onUpload={(files) => void upload(files)}
@@ -756,6 +776,16 @@ export default function App() {
               streaming={streaming}
               providerName={providerLabel(settings)}
               providerReady={providerReady}
+              models={availableModels}
+              selectedModelId={selectedModelId}
+              onModelChange={(modelId) => {
+                if (modelId === 'custom') {
+                  // Open settings to set custom model ID
+                  setSettingsOpen(true);
+                  return;
+                }
+                setSelectedModelId(modelId);
+              }}
               onSend={() => void send()}
               onStop={stopStream}
               onUpload={(files) => void upload(files)}

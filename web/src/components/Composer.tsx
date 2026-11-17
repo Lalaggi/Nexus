@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ArrowUp,
+  ChevronDown,
   FileText,
   KeyRound,
   Paperclip,
@@ -19,6 +20,9 @@ export default function Composer({
   streaming,
   providerName,
   providerReady,
+  models,
+  selectedModelId,
+  onModelChange,
   onSend,
   onStop,
   onUpload,
@@ -33,6 +37,9 @@ export default function Composer({
   streaming: boolean;
   providerName: string;
   providerReady: boolean;
+  models: Array<{ id: string; name: string }>;
+  selectedModelId: string;
+  onModelChange: (modelId: string) => void;
   onSend: () => void;
   onStop: () => void;
   onUpload: (files: FileList | File[]) => void;
@@ -138,10 +145,25 @@ export default function Composer({
             >
               <Paperclip size={18} />
             </button>
-            <button type="button" className="model-pill" onClick={onOpenSettings} title="Model settings">
-              <Sparkles size={14} />
-              <span>{providerName}</span>
-            </button>
+            <select
+              className="model-pill"
+              value={selectedModelId}
+              onChange={(event) => onModelChange(event.target.value)}
+              disabled={!providerReady}
+              title="Select model"
+            >
+              {models.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.name}
+                </option>
+              ))}
+              <option value="custom">Custom model ID (set in Settings → Provider)</option>
+            </select>
+            {providerReady ? (
+              <span className="model-status dot" />
+            ) : (
+              <span className="model-status dot" style={{ background: 'var(--error)' }} />
+            )}
           </div>
           <div className="composer-right">
             {streaming ? (

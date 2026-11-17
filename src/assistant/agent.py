@@ -265,8 +265,9 @@ async def run_turn(
         model, provider, key = await resolve_provider(db, chat.get("provider"))
         history = await build_context(db, chat_id, {assistant_message_id})
         user_notes = await db.list_notes()
+        custom_instructions = await db.get_setting("custom_instructions", "")
         messages: list[dict] = [
-            {"role": "system", "content": system_prompt(user_notes)},
+            {"role": "system", "content": system_prompt(user_notes, custom_instructions)},
             *history,
         ]
         tools = schemas()

@@ -29,6 +29,8 @@ class SettingsBody(BaseModel):
     temperature: float | None = Field(default=None, ge=0, le=1.5)
     nim_api_key: str | None = None
     openrouter_api_key: str | None = None
+    custom_instructions: str | None = None
+    custom_model_id: str | None = None
     clear_nim: bool = False
     clear_openrouter: bool = False
 
@@ -68,6 +70,8 @@ async def _snapshot(request: Request) -> dict:
     provider = await preferred_provider(db)
     user_name = await db.get_setting("user_name", CONFIG.user_name)
     temperature = float(await db.get_setting("temperature", str(CONFIG.temperature)))
+    custom_instructions = await db.get_setting("custom_instructions", "")
+    custom_model_id = await db.get_setting("custom_model_id", "")
     providers = []
     for spec in NEMOTRON.providers.values():
         providers.append(
@@ -100,6 +104,8 @@ async def _snapshot(request: Request) -> dict:
         "user_name": user_name,
         "assistant_name": CONFIG.assistant_name,
         "temperature": temperature,
+        "custom_instructions": custom_instructions,
+        "custom_model_id": custom_model_id,
         "max_tool_steps": CONFIG.max_tool_steps,
         "sandbox": sandbox_status(),
         "paths": {
@@ -129,6 +135,10 @@ async def put_settings(request: Request, body: SettingsBody) -> dict:
         await db.set_setting("user_name", name)
     if body.temperature is not None:
         await db.set_setting("temperature", str(max(0.0, min(1.5, body.temperature))))
+    if body.custom_instructions is not None:
+        await db.set_setting("custom_instructions", body.custom_instructions.strip())
+    if body.custom_model_id is not None:
+        await db.set_setting("custom_model_id", body.custom_model_id.strip())
     if body.clear_nim:
         await db.delete_setting("nim_api_key")
     if body.clear_openrouter:

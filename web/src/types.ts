@@ -102,6 +102,7 @@ export interface SandboxStatus {
   podman: boolean;
   image: boolean;
   image_name: string;
+  mode: string;
   version?: string;
   detail: string;
 }
@@ -118,6 +119,8 @@ export interface SettingsSnapshot {
   user_name: string;
   assistant_name: string;
   temperature: number;
+  custom_instructions: string;
+  custom_model_id: string;
   max_tool_steps: number;
   sandbox: SandboxStatus;
   paths: { uploads: string; outputs: string; data: string };
