@@ -6,6 +6,7 @@ import asyncio
 import json
 import shutil
 from typing import Any
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
