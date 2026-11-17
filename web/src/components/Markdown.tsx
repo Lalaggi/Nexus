@@ -106,8 +106,14 @@ export default function Markdown({ content, onOpenFile }: MarkdownProps) {
             const element: any = node;
             const text = hastText(element);
             const codeNode = element?.children?.find((child: any) => child.tagName === 'code');
+            const classes = codeNode?.properties?.className ?? [];
+            const languageClass = Array.isArray(classes)
+              ? classes.find((c: any) => String(c).startsWith('language-'))
+              : null;
             const language =
-              codeNode?.properties?.className?.[0]?.toString()?.replace('language-', '') ?? '';
+              languageClass
+                ? String(languageClass).replace('language-', '')
+                : '';
             return (
               <div className="code-block">
                 <div className="code-head">
