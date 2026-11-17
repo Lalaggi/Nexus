@@ -44,6 +44,14 @@ Open <http://127.0.0.1:8848>.
 
 The server binds to loopback by default. If you expose it beyond loopback, set `ASSISTANT_PASSWORD`, put it behind HTTPS, and set `ASSISTANT_COOKIE_SECURE=true`.
 
+To bind to all interfaces (e.g. for phone or Tailscale access), set `ASSISTANT_HOST=0.0.0.0`:
+
+```bash
+ASSISTANT_HOST=0.0.0.0 uv run assistant
+```
+
+⚠️ Only do this with a password set and preferably behind a reverse proxy with HTTPS.
+
 ## Sandbox setup (recommended)
 
 The sandbox is what makes the `sandbox` tool genuinely useful while keeping your real files out of reach. Run the one-time host setup:
