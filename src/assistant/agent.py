@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
-import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,26 +17,6 @@ from .providers import ProviderError, StreamClient, extract_delta, resolve_provi
 from .tools.base import ToolContext, execute, schemas
 
 Emit = Callable[[dict], Awaitable[None]]
-
-
-def _normalize_llm_text(text: str) -> str:
-    """Clean up hard-wrapped lines that some models emit.
-
-    Some models (notably Nemotron) emit text with newlines every ~40 chars,
-    which renders as broken, ragged lines in the UI. We split into paragraphs
-    (double-newline separated) and rejoin single-newline lines with spaces,
-    preserving intentional paragraph breaks.
-    """
-    if not text:
-        return text
-    paragraphs = re.split(r"\n{2,}", text)
-    cleaned = []
-    for para in paragraphs:
-        para = re.sub(r"\n+", " ", para)
-        para = re.sub(r"[ \t]+", " ", para).strip()
-        if para:
-            cleaned.append(para)
-    return "\n\n".join(cleaned)
 
 
 @dataclass
@@ -407,7 +386,7 @@ async def run_turn(
         await emit({"type": "error", "message": error_message})
     finally:
         duration_ms = int((time.monotonic() - started) * 1000)
-        content = _normalize_llm_text("".join(all_content)).strip()
+        content = "".join(all_content).strip()
         reasoning = "\n\n".join(all_reasoning).strip()
         if not content and error_message:
             content = f"_Could not generate a response: {error_message}_"
