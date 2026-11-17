@@ -23,18 +23,26 @@ RUN apt-get update \
         build-essential \
         ca-certificates \
         curl \
+        dnsutils \
         file \
         fonts-dejavu-core \
         git \
+        iproute2 \
+        iputils-ping \
         jq \
         less \
+        make \
+        nano \
         nodejs \
         npm \
+        openssh-client \
         pkg-config \
+        procps \
         ripgrep \
         tar \
         tzdata \
         unzip \
+        vim \
         wget \
         xz-utils \
         zip \
