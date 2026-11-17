@@ -67,6 +67,7 @@ export default function MessageView({
   message,
   streaming,
   isLast,
+  isLastUser,
   onRegenerate,
   onEdit,
   onOpenFile,
@@ -74,6 +75,7 @@ export default function MessageView({
   message: Message;
   streaming?: boolean;
   isLast?: boolean;
+  isLastUser?: boolean;
   onRegenerate?: () => void;
   onEdit?: (message: Message) => void;
   onOpenFile?: (file: FileTarget) => void;
@@ -118,7 +120,7 @@ export default function MessageView({
               {copied ? <Check size={14} /> : <Copy size={14} />}
               <span>{copied ? 'Copied' : 'Copy'}</span>
             </button>
-            {onEdit && (
+            {isLastUser && onEdit && (
               <button
                 type="button"
                 onClick={handleEdit}
