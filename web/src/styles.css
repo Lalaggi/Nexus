@@ -864,7 +864,9 @@ a {
 }
 .user-message {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
 }
 .user-bubble {
   max-width: 78%;
