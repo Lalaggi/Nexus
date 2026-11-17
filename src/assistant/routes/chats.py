@@ -1,0 +1,291 @@
+"""Chat, message, and task endpoints."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import shutil
+from typing import Any
+
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
+
+from ..agent import RUNS, run_turn, start_run
+from ..config import CONFIG
+from ..db import Database, now
+from ..providers import ProviderError, resolve_provider
+
+router = APIRouter(prefix="/api", tags=["chats"])
+
+
+def db_of(request: Request) -> Database:
+    return request.app.state.db
+
+
+class ChatCreate(BaseModel):
+    title: str | None = None
+
+
+class ChatPatch(BaseModel):
+    title: str | None = None
+    goal: str | None = None
+    model: str | None = None
+
+
+class SendMessage(BaseModel):
+    content: str = ""
+    attachment_ids: list[str] = Field(default_factory=list)
+
+
+class TaskPatch(BaseModel):
+    status: str | None = None
+    title: str | None = None
+    detail: str | None = None
+
+
+def _title_from(content: str, attachments: list[dict]) -> str:
+    line = next((line.strip() for line in content.splitlines() if line.strip()), "")
+    if not line and attachments:
+        line = f"Analyze {attachments[0]['name']}"
+    if not line:
+        return "New chat"
+    return line[:70] + ("…" if len(line) > 70 else "")
+
+
+@router.get("/chats")
+async def list_chats(request: Request) -> list[dict]:
+    return await db_of(request).list_chats()
+
+
+@router.post("/chats")
+async def create_chat(request: Request, body: ChatCreate | None = None) -> dict:
+    db = db_of(request)
+    title = ((body.title if body else None) or "New chat").strip()[:120]
+    return await db.create_chat(title)
+
+
+@router.get("/chats/{chat_id}")
+async def get_chat(request: Request, chat_id: str) -> dict:
+    db = db_of(request)
+    chat = await db.get_chat(chat_id)
+    if chat is None:
+        raise HTTPException(404, "Chat not found")
+    return {
+        "chat": chat,
+        "messages": await db.list_messages(chat_id),
+        "tasks": await db.list_tasks(chat_id),
+    }
+
+
+@router.patch("/chats/{chat_id}")
+async def patch_chat(request: Request, chat_id: str, body: ChatPatch) -> dict:
+    db = db_of(request)
+    if await db.get_chat(chat_id) is None:
+        raise HTTPException(404, "Chat not found")
+    await db.update_chat(chat_id, **body.model_dump(exclude_none=True))
+    return await db.get_chat(chat_id)  # type: ignore[return-value]
+
+
+@router.delete("/chats/{chat_id}")
+async def delete_chat(request: Request, chat_id: str) -> dict:
+    db = db_of(request)
+    if await db.get_chat(chat_id) is None:
+        raise HTTPException(404, "Chat not found")
+    await db.delete_chat(chat_id)
+    for directory in (
+        CONFIG.chat_workspace_dir(chat_id),
+        CONFIG.chat_outputs_dir(chat_id),
+        CONFIG.chat_uploads_dir(chat_id),
+    ):
+        if directory.exists():
+            shutil.rmtree(directory, ignore_errors=True)
+    return {"ok": True}
+
+
+@router.get("/chats/{chat_id}/tasks")
+async def list_tasks(request: Request, chat_id: str) -> dict:
+    db = db_of(request)
+    chat = await db.get_chat(chat_id)
+    if chat is None:
+        raise HTTPException(404, "Chat not found")
+    return {"tasks": await db.list_tasks(chat_id), "goal": chat.get("goal", "")}
+
+
+@router.patch("/tasks/{task_id}")
+async def patch_task(request: Request, task_id: str, body: TaskPatch) -> dict:
+    db = db_of(request)
+    task = await db.get_task(task_id)
+    if task is None:
+        raise HTTPException(404, "Task not found")
+    updated = await db.update_task(task_id, **body.model_dump(exclude_none=True))
+    return {"task": updated, "tasks": await db.list_tasks(task["chat_id"])}
+
+
+def _sse_stream(
+    request: Request,
+    chat_id: str,
+    assistant_id: str,
+    state,
+    first_event: dict | None = None,
+) -> StreamingResponse:
+    async def generator():
+        queue: asyncio.Queue[dict | None] = asyncio.Queue()
+
+        async def emit(event: dict) -> None:
+            await queue.put(event)
+
+        task = asyncio.create_task(
+            run_turn(db_of(request), chat_id, assistant_id, emit, state)
+        )
+
+        try:
+            if first_event is not None:
+                yield f"data: {json.dumps(first_event, ensure_ascii=False)}\n\n"
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=15)
+                except TimeoutError:
+                    if await request.is_disconnected():
+                        state.cancel.set()
+                        task.cancel()
+                        break
+                    yield ": ping\n\n"
+                    continue
+                if event is None:
+                    break
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                if event.get("type") == "done":
+                    break
+        finally:
+            if not task.done():
+                state.cancel.set()
+                task.cancel()
+            try:
+                await asyncio.shield(task)
+            except (asyncio.CancelledError, Exception):
+                pass
+
+    return StreamingResponse(
+        generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+async def _prepare_attachments(db: Database, ids: list[str]) -> list[dict]:
+    attachments = []
+    for upload_id in ids[:10]:
+        upload = await db.get_upload(upload_id)
+        if upload is None:
+            continue
+        attachments.append(
+            {
+                "id": upload["id"],
+                "name": upload["filename"],
+                "mime": upload["mime"],
+                "size": upload["size"],
+                "url": f"/api/files/uploads/{upload['filename']}",
+            }
+        )
+    return attachments
+
+
+@router.post("/chats/{chat_id}/messages")
+async def send_message(request: Request, chat_id: str, body: SendMessage):
+    db = db_of(request)
+    chat = await db.get_chat(chat_id)
+    if chat is None:
+        raise HTTPException(404, "Chat not found")
+    if chat_id in RUNS:
+        raise HTTPException(409, "This conversation is already generating a response.")
+    attachments = await _prepare_attachments(db, body.attachment_ids)
+    if not body.content.strip() and not attachments:
+        raise HTTPException(400, "Message is empty.")
+
+    try:
+        _, _, _ = await resolve_provider(db, chat.get("provider"))
+    except ProviderError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    user_message = await db.add_message(
+        chat_id, "user", body.content.strip(), attachments=attachments
+    )
+    if chat.get("title") in {"", "New chat"}:
+        await db.update_chat(chat_id, title=_title_from(body.content, attachments))
+        chat = await db.get_chat(chat_id)
+    assistant = await db.add_message(chat_id, "assistant", "")
+    state = start_run(chat_id)
+    return _sse_stream(
+        request,
+        chat_id,
+        assistant["id"],
+        state,
+        first_event={"type": "user_message", "message": user_message, "chat": chat},
+    )
+
+
+@router.post("/chats/{chat_id}/regenerate")
+async def regenerate(request: Request, chat_id: str):
+    db = db_of(request)
+    chat = await db.get_chat(chat_id)
+    if chat is None:
+        raise HTTPException(404, "Chat not found")
+    if chat_id in RUNS:
+        raise HTTPException(409, "This conversation is already generating a response.")
+    messages = await db.list_messages(chat_id)
+    if not messages:
+        raise HTTPException(400, "Nothing to regenerate.")
+
+    last_user_index = None
+    for index in range(len(messages) - 1, -1, -1):
+        if messages[index]["role"] == "user":
+            last_user_index = index
+            break
+    if last_user_index is None:
+        raise HTTPException(400, "No user message to regenerate from.")
+    for message in messages[last_user_index + 1 :]:
+        await db.delete_message(message["id"])
+
+    assistant = await db.add_message(chat_id, "assistant", "")
+    state = start_run(chat_id)
+    return _sse_stream(request, chat_id, assistant["id"], state)
+
+
+@router.post("/chats/{chat_id}/stop")
+async def stop_chat(chat_id: str):
+    from ..agent import cancel_run
+
+    return {"stopped": cancel_run(chat_id)}
+
+
+@router.get("/models")
+async def models(request: Request) -> dict:
+    from ..providers import MODELS, api_keys
+
+    db = db_of(request)
+    keys = await api_keys(db)
+    return {
+        "models": [
+            {
+                "id": model.id,
+                "name": model.name,
+                "subtitle": model.subtitle,
+                "description": model.description,
+                "providers": [
+                    {
+                        "id": spec.id,
+                        "label": spec.label,
+                        "model_id": spec.model_id,
+                        "available": bool(keys.get(spec.id)),
+                    }
+                    for spec in model.providers.values()
+                ],
+            }
+            for model in MODELS
+        ]
+    }

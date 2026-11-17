@@ -1,0 +1,32 @@
+[project]
+name = "assistant"
+version = "0.1.0"
+description = "A self-hosted, tool-using AI assistant"
+readme = "README.md"
+authors = [
+    { name = "Ellie Wells", email = "elilovescomputers@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "aiosqlite>=0.20.0",
+    "fastapi>=0.115.0",
+    "httpx>=0.27.0",
+    "pydantic-settings>=2.6.0",
+    "pypdf>=5.0.0",
+    "python-multipart>=0.0.12",
+    "trafilatura>=2.0.0",
+    "uvicorn[standard]>=0.32.0",
+]
+
+[project.scripts]
+assistant = "assistant.__main__:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.1,<0.13.0"]
+build-backend = "uv_build"

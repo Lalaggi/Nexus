@@ -1,0 +1,64 @@
+# Sandbox image for the `sandbox` tool.
+#
+# This is the assistant's disposable Linux box: Python, git, curl, Node, and a
+# compiler, with no host home directory, no app database, and no API keys baked
+# in. Isolation comes from running it as a dedicated user plus the flags in
+# src/assistant/tools/sandbox.py (read-only root, dropped caps, no host mounts
+# beyond the shared uploads/outputs/workspace directories).
+FROM docker.io/library/python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_ROOT_USER_ACTION=ignore \
+    MPLBACKEND=Agg \
+    MPLCONFIGDIR=/tmp/matplotlib
+
+# Everyday command-line tools. Keep this list boring and reproducible; the
+# container has no package manager access at runtime because the root
+# filesystem is mounted read-only.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        file \
+        fonts-dejavu-core \
+        git \
+        jq \
+        less \
+        nodejs \
+        npm \
+        pkg-config \
+        ripgrep \
+        tar \
+        tzdata \
+        unzip \
+        wget \
+        xz-utils \
+        zip \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir \
+        numpy \
+        pandas \
+        matplotlib \
+        pillow \
+        openpyxl \
+        scipy \
+        requests \
+        beautifulsoup4 \
+        lxml
+
+# UID 1000 matches the container-side user. `--userns=keep-id:uid=1000,gid=1000`
+# maps the dedicated host sandbox account onto it, so bind-mounted files belong
+# to the sandbox account and never to the app user's main home.
+RUN groupadd --gid 1000 sandbox \
+    && useradd --uid 1000 --gid 1000 --no-create-home --shell /usr/sbin/nologin sandbox
+
+USER 1000:1000
+WORKDIR /workspace
+
+# No ENTRYPOINT: sandbox.py supplies the exact argv. No shell entrypoint, no
+# writable root filesystem, no package-manager wrappers by default.
