@@ -722,7 +722,6 @@ export default function App() {
               streaming={streaming}
               onRegenerate={regenerate}
               onEdit={(message) => {
-                if (message.role !== 'assistant') return;
                 setDraft(message.content || '');
                 setDraftAttachments(message.attachments || []);
                 setMessages((previous) => {

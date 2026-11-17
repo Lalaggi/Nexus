@@ -5,7 +5,6 @@ import {
   Edit2,
   FileText,
   Image as ImageIcon,
-  MoreVertical,
   RotateCcw,
 } from 'lucide-react';
 import type { Attachment, Message } from '../types';
@@ -80,7 +79,6 @@ export default function MessageView({
   onOpenFile?: (file: FileTarget) => void;
 }) {
   const [copied, setCopied] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const isUser = message.role === 'user';
   const sources = sourceList(message.tool_events || []);
   const hasVisibleContent = Boolean(message.content?.trim());
@@ -89,7 +87,6 @@ export default function MessageView({
     try {
       await navigator.clipboard.writeText(message.content);
       setCopied(true);
-      setMenuOpen(false);
       window.setTimeout(() => setCopied(false), 1500);
     } catch {
       /* ignore */
@@ -97,21 +94,11 @@ export default function MessageView({
   };
 
   const handleEdit = () => {
-    setMenuOpen(false);
     onEdit?.(message);
   };
 
   const handleRegenerate = () => {
-    setMenuOpen(false);
     onRegenerate?.();
-  };
-
-  const toggleMenu = () => {
-    setMenuOpen((prev) => !prev);
-  };
-
-  const closeMenu = () => {
-    setMenuOpen(false);
   };
 
   if (isUser) {
@@ -120,6 +107,28 @@ export default function MessageView({
         <div className="user-bubble">
           <AttachmentGrid attachments={message.attachments} onOpenFile={onOpenFile} />
           {message.content && <div className="user-text">{message.content}</div>}
+          {!streaming && hasVisibleContent && (
+            <div className="message-actions message-actions-user">
+              <button
+                type="button"
+                onClick={copy}
+                title="Copy message"
+              >
+                {copied ? <Check size={14} /> : <Copy size={14} />}
+                <span>{copied ? 'Copied' : 'Copy'}</span>
+              </button>
+              {isLast && onEdit && (
+                <button
+                  type="button"
+                  onClick={handleEdit}
+                  title="Edit message"
+                >
+                  <Edit2 size={14} />
+                  <span>Edit</span>
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -175,64 +184,34 @@ export default function MessageView({
         )}
 
         {!streaming && hasVisibleContent && (
-          <div className="message-actions">
+          <div className="message-actions message-actions-assistant">
             <button
               type="button"
-              className={`message-menu-button ${menuOpen ? 'is-open' : ''}`}
-              onClick={toggleMenu}
-              aria-label="Message actions"
-              aria-expanded={menuOpen}
+              onClick={copy}
+              title="Copy response"
             >
-              <MoreVertical size={16} />
+              {copied ? <Check size={14} /> : <Copy size={14} />}
+              <span>{copied ? 'Copied' : 'Copy'}</span>
             </button>
-            {menuOpen && (
-              <div className="message-menu" onClick={closeMenu}>
-                <div className="message-menu-inner" onClick={(e) => e.stopPropagation()}>
-                  {streaming ? (
-                    <button
-                      type="button"
-                      className="menu-item"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        onRegenerate?.();
-                      }}
-                    >
-                      <span>Stop generating</span>
-                    </button>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        className="menu-item"
-                        onClick={copy}
-                      >
-                        <Copy size={14} />
-                        <span>{copied ? 'Copied' : 'Copy'}</span>
-                      </button>
-                      {isLast && onEdit && (
-                        <button
-                          type="button"
-                          className="menu-item"
-                          onClick={handleEdit}
-                        >
-                          <Edit2 size={14} />
-                          <span>Edit</span>
-                        </button>
-                      )}
-                      {isLast && onRegenerate && (
-                        <button
-                          type="button"
-                          className="menu-item"
-                          onClick={handleRegenerate}
-                        >
-                          <RotateCcw size={14} />
-                          <span>Regenerate</span>
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
+            {isLast && onEdit && (
+              <button
+                type="button"
+                onClick={handleEdit}
+                title="Edit response"
+              >
+                <Edit2 size={14} />
+                <span>Edit</span>
+              </button>
+            )}
+            {isLast && onRegenerate && (
+              <button
+                type="button"
+                onClick={handleRegenerate}
+                title="Regenerate response"
+              >
+                <RotateCcw size={14} />
+                <span>Regenerate</span>
+              </button>
             )}
           </div>
         )}

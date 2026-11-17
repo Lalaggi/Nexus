@@ -46,6 +46,7 @@ export default function ChatView({
             streaming={streaming && message.id === lastAssistant?.id}
             isLast={message.id === lastAssistant?.id}
             onRegenerate={onRegenerate}
+            onEdit={onEdit}
             onOpenFile={onOpenFile}
           />
         ))}
