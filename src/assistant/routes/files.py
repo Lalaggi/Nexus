@@ -237,5 +237,24 @@ async def serve_legacy_file(
     except ValueError as exc:
         raise HTTPException(403, str(exc)) from exc
     if not file_path.is_file():
-        raise HTTPException(404, "File not found")
+        # Fall back to per-chat directories: files written after per-chat
+        # isolation live under data/home/<kind>/<chat_id>/<path>, but old
+        # file:// links only encode the kind and relative path. Search all
+        # chat subdirectories for a matching relative path.
+        search_root = CONFIG.outputs_dir if kind == "outputs" else CONFIG.uploads_dir
+        if search_root.exists():
+            for chat_dir in sorted(search_root.iterdir(), reverse=True):
+                if not chat_dir.is_dir():
+                    continue
+                try:
+                    candidate = _resolve(path, chat_dir)
+                except ValueError:
+                    continue
+                if candidate.is_file():
+                    file_path = candidate
+                    break
+            else:
+                raise HTTPException(404, "File not found")
+        else:
+            raise HTTPException(404, "File not found")
     return _file_response(file_path, download)

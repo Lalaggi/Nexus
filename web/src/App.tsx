@@ -282,6 +282,21 @@ export default function App() {
           serverAssistantId = String(event.message_id ?? localAssistantId);
           break;
         }
+        case 'title': {
+          const newTitle = String(event.title ?? '');
+          const id = String(event.chat_id ?? '');
+          if (newTitle && id) {
+            setActiveChat((previous) =>
+              previous ? { ...previous, title: newTitle } : previous,
+            );
+            setChats((previous) =>
+              previous.map((item) =>
+                item.id === id ? { ...item, title: newTitle } : item,
+              ),
+            );
+          }
+          break;
+        }
         case 'delta': {
           pending.text += String(event.text ?? '');
           schedule();
@@ -695,6 +710,17 @@ export default function App() {
               messages={messages}
               streaming={streaming}
               onRegenerate={regenerate}
+              onEdit={(message) => {
+                if (message.role !== 'assistant') return;
+                setDraft(message.content || '');
+                setDraftAttachments(message.attachments || []);
+                setMessages((previous) => {
+                  const idx = previous.findIndex((m) => m.id === message.id);
+                  if (idx === -1) return previous;
+                  return previous.slice(0, idx + 1);
+                });
+                window.setTimeout(() => inputRef.current?.focus(), 50);
+              }}
               onOpenFile={setPreview}
             />
             <div className="composer-dock">

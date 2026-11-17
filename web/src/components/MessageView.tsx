@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, Copy, FileText, Image as ImageIcon, RotateCcw } from 'lucide-react';
+import { Check, Copy, Edit2, FileText, Image as ImageIcon, RotateCcw } from 'lucide-react';
 import type { Attachment, Message } from '../types';
 import { attachmentKind, formatBytes, hostOf, type FileTarget } from '../api';
 import Markdown from './Markdown';
@@ -61,12 +61,14 @@ export default function MessageView({
   streaming,
   isLast,
   onRegenerate,
+  onEdit,
   onOpenFile,
 }: {
   message: Message;
   streaming?: boolean;
   isLast?: boolean;
   onRegenerate?: () => void;
+  onEdit?: (message: Message) => void;
   onOpenFile?: (file: FileTarget) => void;
 }) {
   const [copied, setCopied] = useState(false);
@@ -150,6 +152,12 @@ export default function MessageView({
               {copied ? <Check size={14} /> : <Copy size={14} />}
               <span>{copied ? 'Copied' : 'Copy'}</span>
             </button>
+            {isLast && onEdit && (
+              <button type="button" onClick={() => onEdit(message)} title="Edit response">
+                <Edit2 size={14} />
+                <span>Edit</span>
+              </button>
+            )}
             {isLast && onRegenerate && (
               <button type="button" onClick={onRegenerate} title="Regenerate response">
                 <RotateCcw size={14} />

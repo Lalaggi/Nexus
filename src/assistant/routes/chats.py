@@ -45,6 +45,10 @@ class TaskPatch(BaseModel):
     detail: str | None = None
 
 
+class MessagePatch(BaseModel):
+    content: str | None = None
+
+
 def _title_from(content: str, attachments: list[dict]) -> str:
     line = next((line.strip() for line in content.splitlines() if line.strip()), "")
     if not line and attachments:
@@ -260,6 +264,27 @@ async def regenerate(request: Request, chat_id: str):
     assistant = await db.add_message(chat_id, "assistant", "")
     state = start_run(chat_id)
     return _sse_stream(request, chat_id, assistant["id"], state)
+
+
+@router.patch("/messages/{message_id}")
+async def patch_message(message_id: str, body: MessagePatch, request: Request):
+    db = db_of(request)
+    message = await db._fetchone(
+        "SELECT * FROM messages WHERE id = ?", (message_id,)
+    )
+    if message is None:
+        raise HTTPException(404, "Message not found")
+    if message["role"] != "assistant":
+        raise HTTPException(400, "Only assistant messages can be edited.")
+    if body.content is None:
+        raise HTTPException(400, "Content is required.")
+    await db.conn.execute(
+        "UPDATE messages SET content = ? WHERE id = ?",
+        (body.content.strip(), message_id),
+    )
+    await db.conn.commit()
+    await db.touch_chat(message["chat_id"])
+    return {"ok": True, "message_id": message_id}
 
 
 @router.post("/chats/{chat_id}/stop")

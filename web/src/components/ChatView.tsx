@@ -8,11 +8,13 @@ export default function ChatView({
   messages,
   streaming,
   onRegenerate,
+  onEdit,
   onOpenFile,
 }: {
   messages: Message[];
   streaming: boolean;
   onRegenerate: () => void;
+  onEdit: (message: Message) => void;
   onOpenFile: (file: FileTarget) => void;
 }) {
   const scroller = useRef<HTMLDivElement>(null);

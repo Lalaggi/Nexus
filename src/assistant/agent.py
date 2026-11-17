@@ -13,10 +13,64 @@ from typing import Any, Awaitable, Callable
 from .config import CONFIG
 from .db import Database
 from .prompt import system_prompt
-from .providers import ProviderError, StreamClient, extract_delta, resolve_provider
+from .providers import (
+    CuratedModel,
+    ProviderError,
+    StreamClient,
+    extract_delta,
+    resolve_provider,
+)
 from .tools.base import ToolContext, execute, schemas
 
 Emit = Callable[[dict], Awaitable[None]]
+
+
+def _extract_user_text(history: list[dict]) -> str:
+    """Get the latest user message text from history."""
+    for message in reversed(history):
+        if message.get("role") == "user":
+            content = message.get("content", "")
+            if isinstance(content, str):
+                return content
+            if isinstance(content, list):
+                return " ".join(
+                    p.get("text", "")
+                    for p in content
+                    if isinstance(p, dict) and p.get("type") == "text"
+                )
+    return ""
+
+
+async def _generate_title(
+    client: StreamClient,
+    model: CuratedModel,
+    user_content: str,
+    assistant_content: str,
+) -> str:
+    """Generate a short, descriptive chat title (3-6 words) from the conversation."""
+    prompt = (
+        "Generate a short, descriptive chat title for this conversation. "
+        "Rules: 3-6 words, no quotes, no punctuation at the end, no labels like "
+        "'Title:', just the title text. Use sentence case.\n\n"
+        f"User: {user_content[:400]}\n"
+        f"Assistant: {assistant_content[:400]}"
+    )
+    chunks: list[str] = []
+    try:
+        async for chunk in client.stream(
+            [{"role": "user", "content": prompt}], None, tool_choice=None
+        ):
+            text, _reasoning, _deltas, _finish, _usage = extract_delta(chunk)
+            if text:
+                chunks.append(text)
+    except Exception:
+        return "New chat"
+    title = "".join(chunks).strip()
+    title = title.strip('"').strip("'").strip()
+    title = title.split("\n")[0].strip()
+    if len(title) > 80:
+        title = title[:80].strip()
+    return title or "New chat"
 
 
 @dataclass
@@ -399,6 +453,30 @@ async def run_turn(
             await db.touch_chat(chat_id)
         except Exception:
             pass
+
+        # Generate a topic-based chat title on the first assistant turn.
+        try:
+            chat = await db.get_chat(chat_id)
+            if chat and chat.get("title") in {"", "New chat"}:
+                messages = await db.list_messages(chat_id)
+                assistant_count = sum(1 for m in messages if m["role"] == "assistant")
+                if assistant_count == 1:
+                    user_content = _extract_user_text(history)
+                    new_title = await _generate_title(
+                        client, model, user_content, content
+                    )
+                    if new_title and new_title != "New chat":
+                        await db.update_chat(chat_id, title=new_title)
+                        await emit(
+                            {
+                                "type": "title",
+                                "chat_id": chat_id,
+                                "title": new_title,
+                            }
+                        )
+        except Exception:
+            pass
+
         try:
             await emit(
                 {
