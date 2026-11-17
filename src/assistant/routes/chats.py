@@ -182,15 +182,32 @@ def _sse_stream(
     )
 
 
-async def _prepare_attachments(db: Database, ids: list[str]) -> list[dict]:
+async def _prepare_attachments(db: Database, ids: list[str], chat_id: str | None = None) -> list[dict]:
     attachments = []
     for upload_id in ids[:10]:
         upload = await db.get_upload(upload_id)
         if upload is None:
             continue
-        chat_id = upload.get("chat_id")
-        if chat_id:
-            url = f"/api/files/chats/{quote(str(chat_id))}/uploads/{quote(upload['filename'])}"
+        upload_chat_id = upload.get("chat_id")
+
+        # If the upload has no chat_id yet, it lives in the temp directory.
+        # Move it to this chat's per-chat uploads dir and update the record.
+        if upload_chat_id is None and chat_id is not None:
+            src = CONFIG.tempuploads_dir / upload["filename"]
+            dst_dir = CONFIG.chat_uploads_dir(chat_id)
+            dst_dir.mkdir(parents=True, exist_ok=True)
+            dst = dst_dir / upload["filename"]
+            if src.is_file():
+                src.replace(dst)
+            await db.conn.execute(
+                "UPDATE uploads SET chat_id = ? WHERE id = ?",
+                (chat_id, upload_id),
+            )
+            await db.conn.commit()
+            upload_chat_id = chat_id
+
+        if upload_chat_id:
+            url = f"/api/files/chats/{quote(str(upload_chat_id))}/uploads/{quote(upload['filename'])}"
         else:
             url = f"/api/files/uploads/{quote(upload['filename'])}"
         attachments.append(
@@ -213,7 +230,7 @@ async def send_message(request: Request, chat_id: str, body: SendMessage):
         raise HTTPException(404, "Chat not found")
     if chat_id in RUNS:
         raise HTTPException(409, "This conversation is already generating a response.")
-    attachments = await _prepare_attachments(db, body.attachment_ids)
+    attachments = await _prepare_attachments(db, body.attachment_ids, chat_id)
     if not body.content.strip() and not attachments:
         raise HTTPException(400, "Message is empty.")
 

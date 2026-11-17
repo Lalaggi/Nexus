@@ -39,16 +39,6 @@ def _sandbox_roots(chat_id: str | None) -> list[tuple[Path, str]]:
                 (CONFIG.chat_workspace_dir(chat_id), "/workspace"),
             ]
         )
-    # Legacy locations used before uploads and outputs became per-chat.
-    # These are mounted at /mnt/useruploads-legacy and /mnt/outputs-legacy
-    # inside the sandbox so files uploaded before a chat existed are still
-    # accessible.
-    roots.extend(
-        [
-            (CONFIG.outputs_dir, "/mnt/outputs-legacy"),
-            (CONFIG.uploads_dir, "/mnt/useruploads-legacy"),
-        ]
-    )
     return roots
 
 
@@ -72,12 +62,7 @@ def _sandbox_path(path: Path, chat_id: str | None = None) -> str:
 
 def _file_url(path: Path, chat_id: str | None = None) -> str:
     sandbox = _sandbox_path(path, chat_id)
-    if sandbox.startswith((
-        "/mnt/outputs/",
-        "/mnt/outputs-legacy/",
-        "/mnt/useruploads/",
-        "/mnt/useruploads-legacy/",
-    )):
+    if sandbox.startswith(("/mnt/outputs/", "/mnt/useruploads/")):
         return "file://" + quote(sandbox, safe="/")
     return ""
 
@@ -140,19 +125,9 @@ def _candidates(token: str, chat_id: str) -> list[Path]:
     outputs = CONFIG.chat_outputs_dir(chat_id)
     uploads = CONFIG.chat_uploads_dir(chat_id)
     workspace = CONFIG.chat_workspace_dir(chat_id)
-    legacy_outputs = CONFIG.outputs_dir
-    legacy_uploads = CONFIG.uploads_dir
     candidates: list[Path] = []
 
-    if token.startswith("/mnt/outputs-legacy/"):
-        candidates.append(legacy_outputs / token[len("/mnt/outputs-legacy/") :])
-    elif token == "/mnt/outputs-legacy":
-        candidates.append(legacy_outputs)
-    elif token.startswith("/mnt/useruploads-legacy/"):
-        candidates.append(legacy_uploads / token[len("/mnt/useruploads-legacy/") :])
-    elif token == "/mnt/useruploads-legacy":
-        candidates.append(legacy_uploads)
-    elif token.startswith("/mnt/outputs/"):
+    if token.startswith("/mnt/outputs/"):
         candidates.append(outputs / token[len("/mnt/outputs/") :])
     elif token == "/mnt/outputs":
         candidates.append(outputs)
@@ -166,13 +141,13 @@ def _candidates(token: str, chat_id: str) -> list[Path]:
         candidates.append(workspace)
     elif Path(token).is_absolute():
         absolute = Path(token).resolve()
-        for root in (outputs, uploads, workspace, legacy_outputs, legacy_uploads):
+        for root in (outputs, uploads, workspace):
             if absolute.is_relative_to(root.resolve()):
                 candidates.append(absolute)
                 break
     else:
         relative = Path(token)
-        for base in (outputs, uploads, workspace, legacy_outputs, legacy_uploads):
+        for base in (outputs, uploads, workspace):
             candidate = (base / relative).resolve()
             if candidate.is_relative_to(base.resolve()):
                 candidates.append(candidate)

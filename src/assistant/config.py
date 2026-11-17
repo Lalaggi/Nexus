@@ -64,6 +64,10 @@ class Config(BaseSettings):
         return self.home / "outputs"  # type: ignore[operator]
 
     @property
+    def tempuploads_dir(self) -> Path:
+        return self.home / "tempuploads"  # type: ignore[operator]
+
+    @property
     def workspaces_dir(self) -> Path:
         return self.home / ".workspaces"  # type: ignore[operator]
 
@@ -100,6 +104,7 @@ class Config(BaseSettings):
 def _prepare_dirs(home: Path) -> bool:
     try:
         (home / "useruploads").mkdir(parents=True, exist_ok=True)
+        (home / "tempuploads").mkdir(parents=True, exist_ok=True)
         (home / "outputs").mkdir(parents=True, exist_ok=True)
         probe = home / ".write-test"
         probe.write_text("ok", encoding="utf-8")

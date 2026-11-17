@@ -16,8 +16,7 @@ Node, a compiler, and common command-line tools, with internet access for public
 
 - Your working directory is /workspace. It persists for this conversation; install extra
   Python packages in a venv there, and use /tmp for throwaway files.
-- Uploaded files are read-only at /mnt/useruploads. Files uploaded before this chat
-  started are at /mnt/useruploads-legacy. Write anything the user should see to
+- Uploaded files are read-only at /mnt/useruploads. Write anything the user should see to
   /mnt/outputs, then link it as [name](file:///mnt/outputs/name).
 - Only /workspace and /mnt/outputs persist. Changes elsewhere in the sandbox are temporary.
 - There is no root access. Use the sandbox responsibly: keep downloads and outputs modest,

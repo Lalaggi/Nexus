@@ -239,8 +239,6 @@ async def run_sandbox(ctx: ToolContext, args: dict) -> ToolResult:
         "-v",
         f"{uploads}:/mnt/useruploads:ro",
         "-v",
-        f"{CONFIG.uploads_dir}:/mnt/useruploads-legacy:ro",
-        "-v",
         f"{outputs}:/mnt/outputs:rw",
         "-w",
         "/workspace",

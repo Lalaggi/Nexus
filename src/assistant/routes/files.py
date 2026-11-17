@@ -132,7 +132,9 @@ async def upload(
         directory.mkdir(parents=True, exist_ok=True)
         url_base = f"/api/files/chats/{quote(chat_id)}/uploads"
     else:
-        directory = CONFIG.uploads_dir
+        # Upload without a chat_id goes to a temp directory. It will be
+        # moved to the per-chat uploads dir when attached to a message.
+        directory = CONFIG.tempuploads_dir
         directory.mkdir(parents=True, exist_ok=True)
         url_base = "/api/files/uploads"
 
