@@ -5,17 +5,25 @@ import {
   ChevronRight,
   Code,
   Copy,
+  Delete,
   ExternalLink,
   FileText,
   KeyRound,
   Loader2,
+  Plus,
   ShieldAlert,
   ShieldCheck,
   Terminal,
+  Trash2,
   User,
   X,
 } from 'lucide-react';
-import type { SettingsSnapshot } from '../types';
+import type { CustomModel, SettingsSnapshot } from '../types';
+import {
+  addCustomModel,
+  deleteCustomModel,
+  listCustomModels,
+} from '../api';
 
 export interface SettingsPatch {
   provider: 'auto' | 'nim' | 'openrouter';
@@ -66,13 +74,24 @@ export default function SettingsDialog({
   const [nimKey, setNimKey] = useState('');
   const [openrouterKey, setOpenrouterKey] = useState('');
   const [customInstructions, setCustomInstructions] = useState('');
-  const [customModelId, setCustomModelId] = useState('');
   const [clearNim, setClearNim] = useState(false);
   const [clearOpenrouter, setClearOpenrouter] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [test, setTest] = useState<TestResult | null>(null);
   const [category, setCategory] = useState<Category>('provider');
+  const [customModelId, setCustomModelId] = useState('');
+
+  // Custom models
+  const [customModels, setCustomModels] = useState<CustomModel[]>([]);
+  const [newModelName, setNewModelName] = useState('');
+  const [newModelId, setNewModelId] = useState('');
+  const [addingModel, setAddingModel] = useState(false);
+
+  // Notes
+  const [newNoteKey, setNewNoteKey] = useState('');
+  const [newNoteValue, setNewNoteValue] = useState('');
+  const [addingNote, setAddingNote] = useState(false);
 
   useEffect(() => {
     if (!open || !settings) return;
@@ -87,7 +106,17 @@ export default function SettingsDialog({
     setClearOpenrouter(false);
     setTest(null);
     setCategory('provider');
+    void refreshCustomModels();
   }, [open, settings]);
+
+  const refreshCustomModels = async () => {
+    try {
+      const models = await listCustomModels();
+      setCustomModels(models);
+    } catch {
+      /* ignore */
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -138,6 +167,50 @@ export default function SettingsDialog({
     }
   };
 
+  const addModel = async () => {
+    const name = newModelName.trim();
+    const modelId = newModelId.trim();
+    if (!name || !modelId) return;
+    setAddingModel(true);
+    try {
+      const result = await addCustomModel(name, modelId);
+      if (result) {
+        setNewModelName('');
+        setNewModelId('');
+        setCustomModels((prev) => [...prev, result]);
+      }
+    } catch {
+      /* error shown by API or could add toast */
+    } finally {
+      setAddingModel(false);
+    }
+  };
+
+  const removeModel = async (modelId: string) => {
+    try {
+      await deleteCustomModel(modelId);
+      setCustomModels((prev) => prev.filter((m) => m.model_id !== modelId));
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const addNote = async () => {
+    const key = newNoteKey.trim();
+    const value = newNoteValue.trim();
+    if (!key || !value) return;
+    setAddingNote(true);
+    try {
+      // Use the note_set tool via settings save is not applicable;
+      // notes are managed through the sandbox tool by the model.
+      // Here we just track locally until we add a notes API.
+      // For now, store as a setting-like approach isn't available,
+      // so we'll add a notes API endpoint.
+    } finally {
+      setAddingNote(false);
+    }
+  };
+
   const Icon = CATEGORIES.find((c) => c.id === category)?.icon ?? KeyRound;
 
   return (
@@ -157,7 +230,7 @@ export default function SettingsDialog({
           <nav className="settings-sidebar">
             {CATEGORIES.map((cat) => {
               const active = category === cat.id;
-              const Icon = cat.icon;
+              const CatIcon = cat.icon;
               return (
                 <button
                   key={cat.id}
@@ -165,7 +238,7 @@ export default function SettingsDialog({
                   className={`settings-cat ${active ? 'is-active' : ''}`}
                   onClick={() => setCategory(cat.id)}
                 >
-                  <Icon size={15} />
+                  <CatIcon size={15} />
                   <span>{cat.label}</span>
                   {active && <ChevronRight size={12} />}
                 </button>
@@ -192,6 +265,14 @@ export default function SettingsDialog({
                 runTest={runTest}
                 testing={testing}
                 test={test}
+                customModels={customModels}
+                newModelName={newModelName}
+                setNewModelName={setNewModelName}
+                newModelId={newModelId}
+                setNewModelId={setNewModelId}
+                addingModel={addingModel}
+                addModel={addModel}
+                removeModel={removeModel}
               />
             )}
             {category === 'personalisation' && (
@@ -245,6 +326,14 @@ function ProviderPanel({
   runTest,
   testing,
   test,
+  customModels,
+  newModelName,
+  setNewModelName,
+  newModelId,
+  setNewModelId,
+  addingModel,
+  addModel,
+  removeModel,
 }: {
   settings: SettingsSnapshot;
   provider: 'auto' | 'nim' | 'openrouter';
@@ -262,6 +351,14 @@ function ProviderPanel({
   runTest: () => void;
   testing: boolean;
   test: TestResult | null;
+  customModels: CustomModel[];
+  newModelName: string;
+  setNewModelName: (value: string) => void;
+  newModelId: string;
+  setNewModelId: (value: string) => void;
+  addingModel: boolean;
+  addModel: () => void;
+  removeModel: (modelId: string) => void;
 }) {
   return (
     <section className="settings-section">
@@ -368,7 +465,7 @@ function ProviderPanel({
       </div>
 
       <label className="field">
-        <span className="field-label">Custom model ID</span>
+        <span className="field-label">Default model ID</span>
         <input
           type="text"
           value={customModelId}
@@ -380,6 +477,70 @@ function ProviderPanel({
           Override the default model ID. Leave empty to use the provider default.
         </span>
       </label>
+
+      <div className="section-title" style={{ marginTop: 20 }}>
+        <Plus size={17} />
+        <h3>Add custom model</h3>
+      </div>
+      <p className="section-note">
+        Add any model ID from NIM or OpenRouter so it appears in the message box model picker.
+      </p>
+      <div className="two-col">
+        <label className="field">
+          <span className="field-label">Name</span>
+          <input
+            type="text"
+            value={newModelName}
+            onChange={(event) => setNewModelName(event.target.value)}
+            placeholder="e.g. My Nemotron"
+          />
+        </label>
+        <label className="field">
+          <span className="field-label">Model ID</span>
+          <input
+            type="text"
+            value={newModelId}
+            onChange={(event) => setNewModelId(event.target.value)}
+            placeholder="e.g. nvidia/nemotron-3.5-super-vl-120b-a12b"
+          />
+        </label>
+      </div>
+      <div className="test-row">
+        <button
+          type="button"
+          className="btn-tonal"
+          onClick={addModel}
+          disabled={addingModel || !newModelName.trim() || !newModelId.trim()}
+        >
+          {addingModel ? <Loader2 size={15} className="spin" /> : <Plus size={15} />}
+          Add model
+        </button>
+      </div>
+
+      {customModels.length > 0 && (
+        <div className="settings-section">
+          <div className="section-title">
+            <FileText size={17} />
+            <h3>Your custom models</h3>
+          </div>
+          <div className="custom-model-list">
+            {customModels.map((model) => (
+              <div key={model.model_id} className="custom-model-item">
+                <span className="custom-model-name">{model.name}</span>
+                <code className="custom-model-id">{model.model_id}</code>
+                <button
+                  type="button"
+                  className="icon-btn danger"
+                  onClick={() => removeModel(model.model_id)}
+                  aria-label={`Remove ${model.name}`}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="test-row">
         <button type="button" className="btn-tonal" onClick={runTest} disabled={testing}>

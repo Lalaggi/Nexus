@@ -39,6 +39,11 @@ class TestBody(BaseModel):
     provider: str | None = None
 
 
+class CustomModelBody(BaseModel):
+    name: str
+    model_id: str
+
+
 class LoginBody(BaseModel):
     password: str
 
@@ -72,6 +77,7 @@ async def _snapshot(request: Request) -> dict:
     temperature = float(await db.get_setting("temperature", str(CONFIG.temperature)))
     custom_instructions = await db.get_setting("custom_instructions", "")
     custom_model_id = await db.get_setting("custom_model_id", "")
+    custom_models = await db.list_custom_models()
     providers = []
     for spec in NEMOTRON.providers.values():
         providers.append(
@@ -106,6 +112,7 @@ async def _snapshot(request: Request) -> dict:
         "temperature": temperature,
         "custom_instructions": custom_instructions,
         "custom_model_id": custom_model_id,
+        "custom_models": custom_models,
         "max_tool_steps": CONFIG.max_tool_steps,
         "sandbox": sandbox_status(),
         "paths": {
@@ -185,6 +192,32 @@ async def test_provider(request: Request, body: TestBody) -> dict:
             {"ok": False, "error": f"Connection failed: {exc}", "provider": provider.id},
             status_code=400,
         )
+
+@router.get("/models/custom")
+async def list_custom_models_endpoint(request: Request) -> list[dict]:
+    db = db_of(request)
+    return await db.list_custom_models()
+
+
+@router.post("/models/custom")
+async def add_custom_model_endpoint(
+    request: Request, body: CustomModelBody
+) -> dict | None:
+    db = db_of(request)
+    result = await db.add_custom_model(body.name, body.model_id)
+    if result is None:
+        raise HTTPException(409, "A model with that ID already exists.")
+    return result
+
+
+@router.delete("/models/custom/{model_id:path}")
+async def delete_custom_model_endpoint(request: Request, model_id: str) -> dict:
+    db = db_of(request)
+    existing = await db.get_custom_model(model_id)
+    if existing is None:
+        raise HTTPException(404, "Custom model not found.")
+    await db.delete_custom_model(model_id)
+    return {"ok": True}
 
 
 @router.get("/health")

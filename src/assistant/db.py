@@ -73,6 +73,14 @@ CREATE TABLE IF NOT EXISTS user_notes (
     updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_user_notes_key ON user_notes(key);
+
+CREATE TABLE IF NOT EXISTS custom_models (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    model_id TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_custom_models_model_id ON custom_models(model_id);
 """
 
 
@@ -418,4 +426,39 @@ class Database:
 
     async def delete_note(self, key: str) -> None:
         await self.conn.execute("DELETE FROM user_notes WHERE key = ?", (key,))
+        await self.conn.commit()
+
+    # ---------------------------------------------------------------- custom models
+    async def list_custom_models(self) -> list[dict]:
+        return await self._fetchall(
+            "SELECT * FROM custom_models ORDER BY name ASC"
+        )
+
+    async def get_custom_model(self, model_id: str) -> dict | None:
+        return await self._fetchone(
+            "SELECT * FROM custom_models WHERE model_id = ?", (model_id,)
+        )
+
+    async def add_custom_model(self, name: str, model_id: str) -> dict | None:
+        existing = await self.get_custom_model(model_id)
+        if existing:
+            return None
+        model_id_clean = model_id.strip()
+        name_clean = name.strip()
+        if not model_id_clean or not name_clean:
+            return None
+        stamp = now()
+        model_record_id = new_id("cm")
+        await self.conn.execute(
+            """INSERT INTO custom_models (id,name,model_id,created_at)
+               VALUES (?,?,?,?)""",
+            (model_record_id, name_clean, model_id_clean, stamp),
+        )
+        await self.conn.commit()
+        return await self.get_custom_model(model_id_clean)
+
+    async def delete_custom_model(self, model_id: str) -> None:
+        await self.conn.execute(
+            "DELETE FROM custom_models WHERE model_id = ?", (model_id,)
+        )
         await self.conn.commit()

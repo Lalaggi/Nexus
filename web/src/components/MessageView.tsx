@@ -1,5 +1,13 @@
 import { useState } from 'react';
-import { Check, Copy, Edit2, FileText, Image as ImageIcon, RotateCcw } from 'lucide-react';
+import {
+  Check,
+  Copy,
+  Edit2,
+  FileText,
+  Image as ImageIcon,
+  MoreVertical,
+  RotateCcw,
+} from 'lucide-react';
 import type { Attachment, Message } from '../types';
 import { attachmentKind, formatBytes, hostOf, type FileTarget } from '../api';
 import Markdown from './Markdown';
@@ -72,6 +80,7 @@ export default function MessageView({
   onOpenFile?: (file: FileTarget) => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const isUser = message.role === 'user';
   const sources = sourceList(message.tool_events || []);
   const hasVisibleContent = Boolean(message.content?.trim());
@@ -80,10 +89,29 @@ export default function MessageView({
     try {
       await navigator.clipboard.writeText(message.content);
       setCopied(true);
+      setMenuOpen(false);
       window.setTimeout(() => setCopied(false), 1500);
     } catch {
       /* ignore */
     }
+  };
+
+  const handleEdit = () => {
+    setMenuOpen(false);
+    onEdit?.(message);
+  };
+
+  const handleRegenerate = () => {
+    setMenuOpen(false);
+    onRegenerate?.();
+  };
+
+  const toggleMenu = () => {
+    setMenuOpen((prev) => !prev);
+  };
+
+  const closeMenu = () => {
+    setMenuOpen(false);
   };
 
   if (isUser) {
@@ -148,21 +176,63 @@ export default function MessageView({
 
         {!streaming && hasVisibleContent && (
           <div className="message-actions">
-            <button type="button" onClick={copy} title="Copy response">
-              {copied ? <Check size={14} /> : <Copy size={14} />}
-              <span>{copied ? 'Copied' : 'Copy'}</span>
+            <button
+              type="button"
+              className={`message-menu-button ${menuOpen ? 'is-open' : ''}`}
+              onClick={toggleMenu}
+              aria-label="Message actions"
+              aria-expanded={menuOpen}
+            >
+              <MoreVertical size={16} />
             </button>
-            {isLast && onEdit && (
-              <button type="button" onClick={() => onEdit(message)} title="Edit response">
-                <Edit2 size={14} />
-                <span>Edit</span>
-              </button>
-            )}
-            {isLast && onRegenerate && (
-              <button type="button" onClick={onRegenerate} title="Regenerate response">
-                <RotateCcw size={14} />
-                <span>Regenerate</span>
-              </button>
+            {menuOpen && (
+              <div className="message-menu" onClick={closeMenu}>
+                <div className="message-menu-inner" onClick={(e) => e.stopPropagation()}>
+                  {streaming ? (
+                    <button
+                      type="button"
+                      className="menu-item"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        onRegenerate?.();
+                      }}
+                    >
+                      <span>Stop generating</span>
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="menu-item"
+                        onClick={copy}
+                      >
+                        <Copy size={14} />
+                        <span>{copied ? 'Copied' : 'Copy'}</span>
+                      </button>
+                      {isLast && onEdit && (
+                        <button
+                          type="button"
+                          className="menu-item"
+                          onClick={handleEdit}
+                        >
+                          <Edit2 size={14} />
+                          <span>Edit</span>
+                        </button>
+                      )}
+                      {isLast && onRegenerate && (
+                        <button
+                          type="button"
+                          className="menu-item"
+                          onClick={handleRegenerate}
+                        >
+                          <RotateCcw size={14} />
+                          <span>Regenerate</span>
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
             )}
           </div>
         )}

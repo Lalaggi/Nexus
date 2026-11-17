@@ -190,3 +190,26 @@ export function attachmentKind(mime: string): 'image' | 'pdf' | 'text' | 'other'
   if (mime.startsWith('text/') || mime.includes('json') || mime.includes('xml')) return 'text';
   return 'other';
 }
+
+export interface CustomModel {
+  id: string;
+  name: string;
+  model_id: string;
+}
+
+export async function listCustomModels(): Promise<CustomModel[]> {
+  return api<CustomModel[]>('/models/custom');
+}
+
+export async function addCustomModel(name: string, model_id: string): Promise<CustomModel> {
+  return api<CustomModel>('/models/custom', {
+    method: 'POST',
+    body: JSON.stringify({ name, model_id }),
+  });
+}
+
+export async function deleteCustomModel(model_id: string): Promise<void> {
+  return api(`/models/custom/${encodeURIComponent(model_id)}`, {
+    method: 'DELETE',
+  });
+}

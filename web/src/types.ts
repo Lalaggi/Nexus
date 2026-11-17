@@ -112,6 +112,7 @@ export interface SettingsSnapshot {
   providers: ProviderInfo[];
   model: { id: string; name: string; subtitle: string; description: string };
   models: Array<{ id: string; name: string }>;
+  custom_models: Array<{ id: string; name: string; model_id: string }>;
   keys: {
     nim: { set: boolean; hint: string };
     openrouter: { set: boolean; hint: string };
@@ -126,6 +127,12 @@ export interface SettingsSnapshot {
   paths: { uploads: string; outputs: string; data: string };
   searxng_url: string;
   auth_required: boolean;
+}
+
+export interface CustomModel {
+  id: string;
+  name: string;
+  model_id: string;
 }
 
 export interface StreamEvent {
