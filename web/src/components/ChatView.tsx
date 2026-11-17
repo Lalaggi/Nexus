@@ -35,6 +35,7 @@ export default function ChatView({
   };
 
   const lastAssistant = [...messages].reverse().find((message) => message.role === 'assistant');
+  const lastMessage = messages[messages.length - 1];
 
   return (
     <div className="chat-scroll" ref={scroller} onScroll={onScroll}>
@@ -44,7 +45,7 @@ export default function ChatView({
             key={message.id}
             message={message}
             streaming={streaming && message.id === lastAssistant?.id}
-            isLast={message.id === lastAssistant?.id}
+            isLast={message.id === lastMessage?.id}
             onRegenerate={onRegenerate}
             onEdit={onEdit}
             onOpenFile={onOpenFile}

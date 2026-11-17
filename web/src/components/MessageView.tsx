@@ -193,16 +193,6 @@ export default function MessageView({
               {copied ? <Check size={14} /> : <Copy size={14} />}
               <span>{copied ? 'Copied' : 'Copy'}</span>
             </button>
-            {isLast && onEdit && (
-              <button
-                type="button"
-                onClick={handleEdit}
-                title="Edit response"
-              >
-                <Edit2 size={14} />
-                <span>Edit</span>
-              </button>
-            )}
             {isLast && onRegenerate && (
               <button
                 type="button"
