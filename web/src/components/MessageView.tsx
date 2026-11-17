@@ -118,7 +118,7 @@ export default function MessageView({
               {copied ? <Check size={14} /> : <Copy size={14} />}
               <span>{copied ? 'Copied' : 'Copy'}</span>
             </button>
-            {isLast && onEdit && (
+            {onEdit && (
               <button
                 type="button"
                 onClick={handleEdit}
