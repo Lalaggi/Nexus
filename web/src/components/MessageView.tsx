@@ -107,29 +107,29 @@ export default function MessageView({
         <div className="user-bubble">
           <AttachmentGrid attachments={message.attachments} onOpenFile={onOpenFile} />
           {message.content && <div className="user-text">{message.content}</div>}
-          {!streaming && hasVisibleContent && (
-            <div className="message-actions message-actions-user">
+        </div>
+        {!streaming && hasVisibleContent && (
+          <div className="message-actions message-actions-user">
+            <button
+              type="button"
+              onClick={copy}
+              title="Copy message"
+            >
+              {copied ? <Check size={14} /> : <Copy size={14} />}
+              <span>{copied ? 'Copied' : 'Copy'}</span>
+            </button>
+            {isLast && onEdit && (
               <button
                 type="button"
-                onClick={copy}
-                title="Copy message"
+                onClick={handleEdit}
+                title="Edit message"
               >
-                {copied ? <Check size={14} /> : <Copy size={14} />}
-                <span>{copied ? 'Copied' : 'Copy'}</span>
+                <Edit2 size={14} />
+                <span>Edit</span>
               </button>
-              {isLast && onEdit && (
-                <button
-                  type="button"
-                  onClick={handleEdit}
-                  title="Edit message"
-                >
-                  <Edit2 size={14} />
-                  <span>Edit</span>
-                </button>
-              )}
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
     );
   }
