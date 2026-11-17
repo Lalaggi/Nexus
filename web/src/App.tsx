@@ -727,7 +727,7 @@ export default function App() {
                 setMessages((previous) => {
                   const idx = previous.findIndex((m) => m.id === message.id);
                   if (idx === -1) return previous;
-                  return previous.slice(0, idx + 1);
+                  return previous.slice(0, idx);
                 });
                 window.setTimeout(() => inputRef.current?.focus(), 50);
               }}
