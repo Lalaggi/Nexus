@@ -183,13 +183,18 @@ async def _prepare_attachments(db: Database, ids: list[str]) -> list[dict]:
         upload = await db.get_upload(upload_id)
         if upload is None:
             continue
+        chat_id = upload.get("chat_id")
+        if chat_id:
+            url = f"/api/files/chats/{quote(str(chat_id))}/uploads/{quote(upload['filename'])}"
+        else:
+            url = f"/api/files/uploads/{quote(upload['filename'])}"
         attachments.append(
             {
                 "id": upload["id"],
                 "name": upload["filename"],
                 "mime": upload["mime"],
                 "size": upload["size"],
-                "url": f"/api/files/uploads/{upload['filename']}",
+                "url": url,
             }
         )
     return attachments

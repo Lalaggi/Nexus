@@ -126,9 +126,16 @@ async def upload(
     file: UploadFile = File(...),
     chat_id: str | None = Form(None),
 ):
-    if not chat_id:
-        raise HTTPException(400, "A chat_id is required so uploads stay with their conversation.")
-    await _require_chat(request, chat_id)
+    if chat_id:
+        await _require_chat(request, chat_id)
+        directory = CONFIG.chat_uploads_dir(chat_id)
+        directory.mkdir(parents=True, exist_ok=True)
+        url_base = f"/api/files/chats/{quote(chat_id)}/uploads"
+    else:
+        directory = CONFIG.uploads_dir
+        directory.mkdir(parents=True, exist_ok=True)
+        url_base = "/api/files/uploads"
+
     db = db_of(request)
     limit = CONFIG.max_upload_mb * 1024 * 1024
     raw = await file.read(limit + 1)
@@ -137,8 +144,6 @@ async def upload(
     if not raw:
         raise HTTPException(400, "File is empty.")
 
-    directory = CONFIG.chat_uploads_dir(chat_id)
-    directory.mkdir(parents=True, exist_ok=True)
     name = safe_filename(file.filename or "upload")
     mime = _mime_for(name, file.content_type)
     name = _unique_name(directory, name)
@@ -148,7 +153,7 @@ async def upload(
     record = await db.add_upload(name, mime, len(raw), text, chat_id)
     return {
         **record,
-        "url": f"/api/files/chats/{quote(chat_id)}/uploads/{quote(name)}",
+        "url": f"{url_base}/{quote(name)}",
         "kind": "uploads",
         "has_text": bool(text),
     }
