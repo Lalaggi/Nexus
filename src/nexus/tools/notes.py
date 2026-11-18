@@ -1,4 +1,4 @@
-"""User notes: a small, durable memory the assistant can use to remember
+"""User notes: a small, durable memory the nexus can use to remember
 preferences (e.g. a preferred editor) across conversations. Notes are user-level,
 not per-chat, and should only be written for important, lasting facts."""
 
@@ -124,7 +124,7 @@ async def note_delete(ctx: ToolContext, args: dict) -> ToolResult:
 register(
     Tool(
         name="note_list",
-        description="Read all saved user notes. Use this to recall preferences the assistant has learned.",
+        description="Read all saved user notes. Use this to recall preferences the nexus has learned.",
         parameters=NOTE_LIST_PARAMETERS,
         handler=note_list,
     )

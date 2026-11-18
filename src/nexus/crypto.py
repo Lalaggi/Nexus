@@ -71,7 +71,7 @@ class Cipher:
         key_bytes = _fernet_key(key) if isinstance(key, str) else key
         self._fernet = Fernet(key_bytes)
         # Fail early (and clearly) if the key is malformed.
-        self._fernet.decrypt(self._fernet.encrypt(b"assistant-encryption-probe"))
+        self._fernet.decrypt(self._fernet.encrypt(b"nexus-encryption-probe"))
 
     @staticmethod
     def is_encrypted(value: str | None) -> bool:

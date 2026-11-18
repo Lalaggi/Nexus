@@ -5,16 +5,16 @@ import pytest
 from cryptography.fernet import Fernet
 from fastapi import FastAPI
 
-from assistant.crypto import Cipher
-from assistant.db import Database
-from assistant.routes import notes
+from nexus.crypto import Cipher
+from nexus.db import Database
+from nexus.routes import notes
 
 
 @pytest.fixture
 async def client(tmp_path):
     app = FastAPI()
     app.include_router(notes.router)
-    db = Database(tmp_path / "assistant.db", cipher=Cipher(Fernet.generate_key()))
+    db = Database(tmp_path / "nexus.db", cipher=Cipher(Fernet.generate_key()))
     await db.connect()
     app.state.db = db
     transport = httpx.ASGITransport(app=app)

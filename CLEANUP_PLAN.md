@@ -1,4 +1,4 @@
-# Cleanup Plan — Assistant
+# Cleanup Plan — Nexus
 
 **Status:** planned only, not implemented.
 **Scope:** codebase hygiene, maintainability, testing, and tooling.
@@ -59,7 +59,7 @@ tool if one is ever intended).
 
 ---
 
-## Backend (`src/assistant/`)
+## Backend (`src/nexus/`)
 
 ### 6. Add public `db.get_message()` and stop using private `db._fetchone`
 **Problem:** `routes/chats.py` `patch_message` calls private `db._fetchone()`
@@ -95,7 +95,7 @@ timeout, then fall back to `process.terminate()` if still alive.
 ### 10. Stop swallowing DB persist errors (`agent.py`)
 **Problem:** The `finally` block in `run_turn` wraps `db.update_message` and
 `db.touch_chat` in `except Exception: pass`. A full disk or DB error silently
-loses the assistant's response.
+loses the nexus's response.
 
 **Plan:** Replace the bare `pass` with a logged error (use the module `logger`)
 so operators can see when persistence fails, while still not crashing the

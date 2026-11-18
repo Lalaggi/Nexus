@@ -25,13 +25,13 @@ class Config(BaseSettings):
     home: Path | None = None
 
     searxng_url: str = "http://127.0.0.1:8888"
-    sandbox_image: str = "localhost/assistant-code-sandbox:latest"
+    sandbox_image: str = "localhost/nexus-code-sandbox:latest"
     sandbox_enabled: bool = True
     sandbox_memory: str = "768m"
     sandbox_cpus: str = "1.0"
     sandbox_timeout: int = 90
     sandbox_account: str = "sandbox"
-    sandbox_podman_wrapper: str = "/usr/local/bin/assistant-sandbox-podman"
+    sandbox_podman_wrapper: str = "/usr/local/bin/nexus-sandbox-podman"
     sandbox_network: bool = True
     sandbox_dns: str = "1.1.1.1,9.9.9.9"
 
@@ -39,7 +39,7 @@ class Config(BaseSettings):
     max_search_results: int = 6
     max_upload_mb: int = 50
     user_name: str = "Ellie"
-    assistant_name: str = "Assistant"
+    assistant_name: str = "Nexus"
     password: str = ""
     cookie_secure: bool = False
     # Comma-separated origins allowed to call the API from a packaged app.
@@ -91,7 +91,7 @@ class Config(BaseSettings):
 
     @property
     def db_path(self) -> Path:
-        return self.data_dir / "assistant.db"
+        return self.data_dir / "nexus.db"
 
     @property
     def secret_key_path(self) -> Path:
@@ -100,7 +100,7 @@ class Config(BaseSettings):
         config_home = Path(
             os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))
         ).expanduser()
-        return config_home / "assistant" / "secret.key"
+        return config_home / "nexus" / "secret.key"
 
     @property
     def web_dist(self) -> Path:
@@ -142,7 +142,7 @@ def load_config() -> Config:
     cfg.data_dir = cfg.data_dir.expanduser().resolve()
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
 
-    preferred = (cfg.home or Path("/home/assistant")).expanduser()
+    preferred = (cfg.home or Path("/home/nexus")).expanduser()
     if not _prepare_dirs(preferred):
         fallback = cfg.data_dir / "home"
         _prepare_dirs(fallback)

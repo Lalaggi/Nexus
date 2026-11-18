@@ -1,6 +1,6 @@
 # Mobile App Plans (Capacitor Android)
 
-Tracks completed mobile-app work and future improvements for the Assistant Capacitor Android app.
+Tracks completed mobile-app work and future improvements for the Nexus Capacitor Android app.
 
 ---
 
@@ -68,7 +68,7 @@ Tracks completed mobile-app work and future improvements for the Assistant Capac
 **Ideas:**
 - Clearer empty state when no server is configured.
 - "Paste server address" hint pre-filled with common LAN format.
-- Auto-detect local network Assistant servers (mDNS / broadcast)?
+- Auto-detect local network Nexus servers (mDNS / broadcast)?
 
 ### 5. Performance / startup
 **Ideas:**

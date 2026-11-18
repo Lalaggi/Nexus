@@ -303,7 +303,7 @@ export default function App() {
 
     const placeholder: Message = {
       id: localAssistantId,
-      role: 'assistant',
+      role: 'nexus',
       content: '',
       reasoning: '',
       tool_events: [],
@@ -712,7 +712,7 @@ export default function App() {
       <div className="boot-screen">
         <Brandmark size={48} />
         <Loader2 className="spin" size={20} />
-        <span>Starting Assistant…</span>
+        <span>Starting Nexus…</span>
       </div>
     );
   }
@@ -721,7 +721,7 @@ export default function App() {
     return (
       <div className="boot-screen">
         <Brandmark size={48} />
-        <h1>Cannot reach Assistant</h1>
+        <h1>Cannot reach Nexus</h1>
         <p>{bootError}</p>
         <button type="button" className="btn-primary" onClick={() => void bootApp()}>
           Retry
@@ -760,7 +760,7 @@ export default function App() {
               <Menu size={19} />
             </button>
             <div className="topbar-title">
-              <h1 title={activeChat?.title}>{activeChat?.title || 'Assistant'}</h1>
+              <h1 title={activeChat?.title}>{activeChat?.title || 'Nexus'}</h1>
               <span className="topbar-sub">
                 {activeChat ? `${messages.length} messages` : 'Ready when you are'}
               </span>

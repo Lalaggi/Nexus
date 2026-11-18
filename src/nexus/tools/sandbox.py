@@ -211,7 +211,7 @@ async def run_sandbox(ctx: ToolContext, args: dict) -> ToolResult:
     (pip_conf_dir / "pip.conf").write_text(
         "[install]\ntarget = /workspace/.python-packages\n", encoding="utf-8"
     )
-    name = f"assistant-sbx-{uuid.uuid4().hex[:12]}"
+    name = f"nexus-sbx-{uuid.uuid4().hex[:12]}"
 
     outputs_before = _snapshot(outputs)
     workspace_before = _snapshot(workspace)
@@ -270,13 +270,13 @@ async def run_sandbox(ctx: ToolContext, args: dict) -> ToolResult:
         "-e",
         "MPLBACKEND=Agg",
         "-e",
-        "GIT_AUTHOR_NAME=Assistant",
+        "GIT_AUTHOR_NAME=Nexus",
         "-e",
-        "GIT_AUTHOR_EMAIL=assistant@localhost",
+        "GIT_AUTHOR_EMAIL=nexus@localhost",
         "-e",
-        "GIT_COMMITTER_NAME=Assistant",
+        "GIT_COMMITTER_NAME=Nexus",
         "-e",
-        "GIT_COMMITTER_EMAIL=assistant@localhost",
+        "GIT_COMMITTER_EMAIL=nexus@localhost",
         CONFIG.sandbox_image,
         "sh",
         "-lc",

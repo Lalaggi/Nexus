@@ -4,8 +4,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-IMAGE="${ASSISTANT_SANDBOX_IMAGE:-localhost/assistant-code-sandbox:latest}"
-WRAPPER="/usr/local/bin/assistant-sandbox-podman"
+IMAGE="${ASSISTANT_SANDBOX_IMAGE:-localhost/nexus-code-sandbox:latest}"
+WRAPPER="/usr/local/bin/nexus-sandbox-podman"
 SANDBOX_USER="${ASSISTANT_SANDBOX_USER:-sandbox}"
 
 PODMAN=(podman)
@@ -16,7 +16,7 @@ if [[ -x "${WRAPPER}" ]] && id "${SANDBOX_USER}" >/dev/null 2>&1 && [[ "$(id -un
   fi
 fi
 
-SCRATCH="$(mktemp -d /tmp/assistant-sandbox-test.XXXXXX)"
+SCRATCH="$(mktemp -d /tmp/nexus-sandbox-test.XXXXXX)"
 trap 'rm -rf "$SCRATCH"' EXIT
 # The sandbox user must be able to traverse and use the scratch mounts.
 chmod 755 "$SCRATCH"
@@ -83,7 +83,7 @@ fi
 
 echo "3/5 Verifying host/LAN egress is blocked…"
 FIREWALL_ACTIVE=0
-if systemctl is-active --quiet assistant-sandbox-firewall.service 2>/dev/null; then
+if systemctl is-active --quiet nexus-sandbox-firewall.service 2>/dev/null; then
   FIREWALL_ACTIVE=1
 fi
 if [[ "${FIREWALL_ACTIVE}" -eq 1 ]]; then

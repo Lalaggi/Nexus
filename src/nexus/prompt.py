@@ -1,4 +1,4 @@
-"""System prompt for the assistant."""
+"""System prompt for the nexus."""
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ The sandbox is currently unavailable. Do not pretend code ran.
             f"{custom_instructions.strip()}\n\n"
         )
 
-    return f"""You are {CONFIG.assistant_name}, an AI assistant. You are talking with {CONFIG.user_name}. Today is {today}.
+    return f"""You are {CONFIG.assistant_name}, an AI nexus. You are talking with {CONFIG.user_name}. Today is {today}.
 
 You are practical, direct, and genuinely useful. You have real tools — use them instead of guessing.
 

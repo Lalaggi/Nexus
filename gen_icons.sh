@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ASSETS=/home/elilovescomputers/Programming/Projects/Assistant/assets
-ANDROID_RES=/home/elilovescomputers/Programming/Projects/Assistant/web/android/app/src/main/res
+ASSETS=/home/elilovescomputers/Programming/Projects/Nexus/assets
+ANDROID_RES=/home/elilovescomputers/Programming/Projects/Nexus/web/android/app/src/main/res
 
 generate() {
   local d="$1" ls="$2" fs="$3"

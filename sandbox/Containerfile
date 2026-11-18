@@ -1,9 +1,9 @@
 # Sandbox image for the `sandbox` tool.
 #
-# This is the assistant's disposable Linux box: Python, git, curl, Node, and a
+# This is the nexus's disposable Linux box: Python, git, curl, Node, and a
 # compiler, with no host home directory, no app database, and no API keys baked
 # in. Isolation comes from running it as a dedicated user plus the flags in
-# src/assistant/tools/sandbox.py (read-only root, dropped caps, no host mounts
+# src/nexus/tools/sandbox.py (read-only root, dropped caps, no host mounts
 # beyond the shared uploads/outputs/workspace directories).
 FROM docker.io/library/python:3.12-slim
 

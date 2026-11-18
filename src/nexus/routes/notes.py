@@ -1,4 +1,4 @@
-"""User notes CRUD endpoints used by Settings and the assistant tools."""
+"""User notes CRUD endpoints used by Settings and the nexus tools."""
 
 from __future__ import annotations
 

@@ -8,9 +8,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-IMAGE="${ASSISTANT_SANDBOX_IMAGE:-localhost/assistant-code-sandbox:latest}"
+IMAGE="${ASSISTANT_SANDBOX_IMAGE:-localhost/nexus-code-sandbox:latest}"
 CONTAINERFILE="${1:-sandbox/Containerfile}"
-WRAPPER="/usr/local/bin/assistant-sandbox-podman"
+WRAPPER="/usr/local/bin/nexus-sandbox-podman"
 SANDBOX_USER="${ASSISTANT_SANDBOX_USER:-sandbox}"
 
 PODMAN=(podman)
@@ -32,7 +32,7 @@ BUILD_CONTEXT="sandbox"
 CLEANUP=""
 if [[ "${SANDBOX_MODE}" -eq 1 ]]; then
   # The project may live in a 0700 home the sandbox account cannot read.
-  CLEANUP="$(mktemp -d /tmp/assistant-sandbox-build.XXXXXX)"
+  CLEANUP="$(mktemp -d /tmp/nexus-sandbox-build.XXXXXX)"
   chmod 755 "${CLEANUP}"
   cp "${CONTAINERFILE}" "${CLEANUP}/Containerfile"
   chmod 644 "${CLEANUP}/Containerfile"

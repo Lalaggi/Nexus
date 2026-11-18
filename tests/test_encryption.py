@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from cryptography.fernet import Fernet
 
-from assistant.crypto import Cipher, EncryptionError
-from assistant.db import Database
+from nexus.crypto import Cipher, EncryptionError
+from nexus.db import Database
 
 
 async def test_sensitive_fields_are_encrypted_and_round_trip(tmp_path):
-    path = tmp_path / "assistant.db"
+    path = tmp_path / "nexus.db"
     cipher = Cipher(Fernet.generate_key())
     db = Database(path, cipher=cipher)
     await db.connect()
@@ -18,8 +18,8 @@ async def test_sensitive_fields_are_encrypted_and_round_trip(tmp_path):
     )
     await db.add_message(
         chat["id"],
-        "assistant",
-        "assistant secret reply",
+        "nexus",
+        "nexus secret reply",
         reasoning="private reasoning",
         tool_events=[{"name": "sandbox", "data": {"stdout": "secret stdout"}}],
     )
@@ -33,7 +33,7 @@ async def test_sensitive_fields_are_encrypted_and_round_trip(tmp_path):
         b"My private chat",
         b"private goal",
         b"hello super secret",
-        b"assistant secret reply",
+        b"nexus secret reply",
         b"private reasoning",
         b"secret stdout",
         b"secret task",
@@ -52,7 +52,7 @@ async def test_sensitive_fields_are_encrypted_and_round_trip(tmp_path):
     messages = await db.list_messages(chat["id"])
     assert messages[0]["content"] == "hello super secret"
     assert messages[0]["attachments"] == [{"name": "secret.txt"}]
-    assert messages[1]["content"] == "assistant secret reply"
+    assert messages[1]["content"] == "nexus secret reply"
     assert messages[1]["reasoning"] == "private reasoning"
     assert messages[1]["tool_events"][0]["data"]["stdout"] == "secret stdout"
 
@@ -72,7 +72,7 @@ async def test_sensitive_fields_are_encrypted_and_round_trip(tmp_path):
 
 
 async def test_plaintext_rows_are_migrated_and_removed_from_the_file(tmp_path):
-    path = tmp_path / "assistant.db"
+    path = tmp_path / "nexus.db"
     cipher = Cipher(Fernet.generate_key())
     db = Database(path, cipher=cipher)
     await db.connect()
@@ -97,7 +97,7 @@ async def test_plaintext_rows_are_migrated_and_removed_from_the_file(tmp_path):
 
 
 async def test_wrong_key_fails_loudly(tmp_path):
-    path = tmp_path / "assistant.db"
+    path = tmp_path / "nexus.db"
     db = Database(path, cipher=Cipher(Fernet.generate_key()))
     await db.connect()
     chat = await db.create_chat("private", "")

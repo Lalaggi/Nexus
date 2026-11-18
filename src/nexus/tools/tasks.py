@@ -1,4 +1,4 @@
-"""The assistant's own lightweight goal and task system."""
+"""The nexus's own lightweight goal and task system."""
 
 from __future__ import annotations
 

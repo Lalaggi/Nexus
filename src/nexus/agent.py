@@ -53,7 +53,7 @@ async def _generate_title(
         "Rules: 3-6 words, no quotes, no punctuation at the end, no labels like "
         "'Title:', just the title text. Use sentence case.\n\n"
         f"User: {user_content[:400]}\n"
-        f"Assistant: {assistant_content[:400]}"
+        f"Nexus: {assistant_content[:400]}"
     )
     chunks: list[str] = []
     try:
@@ -117,11 +117,11 @@ async def build_context(db: Database, chat_id: str, skip_ids: set[str] | None = 
     images_left = 6
 
     for row in rows:
-        if row["id"] in skip_ids or row["role"] not in {"user", "assistant"}:
+        if row["id"] in skip_ids or row["role"] not in {"user", "nexus"}:
             continue
-        if row["role"] == "assistant":
+        if row["role"] == "nexus":
             if row["content"].strip():
-                messages.append({"role": "assistant", "content": row["content"]})
+                messages.append({"role": "nexus", "content": row["content"]})
             continue
 
         text = row["content"].strip()
@@ -357,7 +357,7 @@ async def run_turn(
                 )
             messages.append(
                 {
-                    "role": "assistant",
+                    "role": "nexus",
                     "content": "".join(step_text) or None,
                     "tool_calls": assistant_calls,
                 }
@@ -455,12 +455,12 @@ async def run_turn(
         except Exception:
             pass
 
-        # Generate a topic-based chat title on the first assistant turn.
+        # Generate a topic-based chat title on the first nexus turn.
         try:
             chat = await db.get_chat(chat_id)
             if chat and chat.get("title") in {"", "New chat"}:
                 messages = await db.list_messages(chat_id)
-                assistant_count = sum(1 for m in messages if m["role"] == "assistant")
+                assistant_count = sum(1 for m in messages if m["role"] == "nexus")
                 if assistant_count == 1:
                     user_content = _extract_user_text(history)
                     new_title = await _generate_title(

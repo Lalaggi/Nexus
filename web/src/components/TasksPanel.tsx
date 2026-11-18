@@ -161,7 +161,7 @@ export default function TasksPanel({
                   ))}
                 </div>
                 <p className="panel-hint">
-                  Tasks are the assistant's own plan for this conversation. Click a status icon to
+                  Tasks are the nexus's own plan for this conversation. Click a status icon to
                   change it.
                 </p>
               </>
@@ -170,7 +170,7 @@ export default function TasksPanel({
                 <ListTodo size={30} />
                 <p>No tasks yet</p>
                 <span>
-                  For multi-step work the assistant creates a task list here so you can follow
+                  For multi-step work the nexus creates a task list here so you can follow
                   along.
                 </span>
               </div>
@@ -212,7 +212,7 @@ export default function TasksPanel({
                 <p>Open a chat to see its files</p>
                 <span>
                   Files are scoped to each conversation. Start or select a chat, then the
-                  assistant's outputs and your uploads will appear here.
+                  nexus's outputs and your uploads will appear here.
                 </span>
               </div>
             ) : files.length > 0 ? (
@@ -240,7 +240,7 @@ export default function TasksPanel({
                 <p>{fileKind === 'outputs' ? 'No outputs yet' : 'No uploads yet'}</p>
                 <span>
                   {fileKind === 'outputs'
-                    ? 'Files the assistant writes appear here and can be opened inline.'
+                    ? 'Files the nexus writes appear here and can be opened inline.'
                     : 'Attach documents or images in the composer to see them here.'}
                 </span>
               </div>

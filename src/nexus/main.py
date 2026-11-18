@@ -19,7 +19,7 @@ from .routes import chats, files, notes, settings
 from .tools.base import load_builtin_tools
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-logger = logging.getLogger("assistant")
+logger = logging.getLogger("nexus")
 
 PUBLIC_API = {"/api/login", "/api/auth", "/api/health"}
 
@@ -27,7 +27,7 @@ PUBLIC_API = {"/api/login", "/api/auth", "/api/health"}
 def _session_token() -> str:
     if CONFIG.password:
         return hmac.new(
-            CONFIG.password.encode("utf-8"), b"assistant-session-v1", hashlib.sha256
+            CONFIG.password.encode("utf-8"), b"nexus-session-v1", hashlib.sha256
         ).hexdigest()
     return secrets.token_urlsafe(32)
 
@@ -54,7 +54,7 @@ async def lifespan(app: FastAPI):
     await db.close()
 
 
-app = FastAPI(title="Assistant", version="0.1.0", lifespan=lifespan, docs_url="/api/docs")
+app = FastAPI(title="Nexus", version="0.1.0", lifespan=lifespan, docs_url="/api/docs")
 
 
 def _request_token(request: Request) -> str:
@@ -132,7 +132,7 @@ app.include_router(settings.router)
 
 @app.get("/api")
 async def api_root() -> dict:
-    return {"name": "Assistant", "version": "0.1.0"}
+    return {"name": "Nexus", "version": "0.1.0"}
 
 
 if (CONFIG.web_dist / "assets").is_dir():
@@ -147,7 +147,7 @@ async def index():
     return HTMLResponse(
         """
         <html><body style="font-family:system-ui;background:#141218;color:#e6e0e9;padding:3rem">
-        <h1>Assistant API is running</h1>
+        <h1>Nexus API is running</h1>
         <p>The web UI has not been built yet. Run <code>npm --prefix web install && npm --prefix web run build</code>,
         then restart the server. For development, run <code>npm --prefix web run dev</code> and open port 5173.</p>
         </body></html>

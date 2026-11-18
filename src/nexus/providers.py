@@ -198,11 +198,11 @@ def _headers(provider: ProviderSpec, key: str) -> dict[str, str]:
         "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
         "Accept": "text/event-stream",
-        "User-Agent": "Assistant/0.1 (self-hosted)",
+        "User-Agent": "Nexus/0.1 (self-hosted)",
     }
     if provider.id == "openrouter":
         headers["HTTP-Referer"] = "http://localhost:8848"
-        headers["X-Title"] = "Assistant"
+        headers["X-Title"] = "Nexus"
     return headers
 
 

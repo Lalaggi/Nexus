@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace = "com.elliewells.assistant"
+    namespace = "com.elliewells.nexus"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.elliewells.assistant"
+        applicationId "com.elliewells.nexus"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

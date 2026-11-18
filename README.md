@@ -1,4 +1,4 @@
-# Assistant
+# Nexus
 
 A self-hosted, single-user ChatGPT replacement built around **NVIDIA Nemotron 3.5 VL Super** (via NIM, falling back to OpenRouter). It streams reasoning, calls tools, searches the web through a local SearXNG instance, and gives the model a disposable Linux sandbox for Python, git, curl, and file output.
 
@@ -27,8 +27,8 @@ sudo pacman -S podman nftables acl e2fsprogs shadow util-linux
 ## Quick start
 
 ```bash
-git clone <this repo> Assistant
-cd Assistant
+git clone <this repo> Nexus
+cd Nexus
 
 uv sync
 npm --prefix web install
@@ -37,7 +37,7 @@ npm --prefix web run build
 cp .env.example .env
 # edit .env: add a NIM or OpenRouter key
 
-uv run assistant
+uv run nexus
 ```
 
 Open <http://127.0.0.1:8848>.
@@ -47,7 +47,7 @@ The server binds to loopback by default. If you expose it beyond loopback, set `
 To bind to all interfaces (e.g. for phone or Tailscale access), set `ASSISTANT_HOST=0.0.0.0`:
 
 ```bash
-ASSISTANT_HOST=0.0.0.0 uv run assistant
+ASSISTANT_HOST=0.0.0.0 uv run nexus
 ```
 
 ⚠️ Only do this with a password set and preferably behind a reverse proxy with HTTPS.
@@ -63,8 +63,8 @@ sudo ./scripts/setup-sandbox-user.sh
 It creates:
 
 - a dedicated, passwordless `sandbox` account with no login shell;
-- a 40 GB ext4 loop image at `/var/lib/assistant-sandbox.img`, mounted at `/srv/assistant-sandbox`;
-- `/home/assistant` bind-mounted from that image, owned by you, with narrow ACLs for the sandbox account;
+- a 40 GB ext4 loop image at `/var/lib/nexus-sandbox.img`, mounted at `/srv/nexus-sandbox`;
+- `/home/nexus` bind-mounted from that image, owned by you, with narrow ACLs for the sandbox account;
 - a root-owned Podman wrapper plus a single sudoers rule, so the app can run containers as `sandbox` but not as root;
 - an nftables egress guard that drops sandbox traffic to loopback, LAN, link-local, and metadata addresses while allowing public internet and DNS;
 - the sandbox image, built as the sandbox account.
@@ -78,7 +78,7 @@ curl -s http://127.0.0.1:8848/api/health
 
 `/api/health` should report `"mode": "dedicated user sandbox"`.
 
-The script is idempotent. It writes an fstab entry for the loop and bind mounts; make sure `/home/assistant` is not already a separately managed mount.
+The script is idempotent. It writes an fstab entry for the loop and bind mounts; make sure `/home/nexus` is not already a separately managed mount.
 
 ### How isolation works
 
@@ -111,7 +111,7 @@ All settings use the `ASSISTANT_` prefix. See `.env.example` for the full list. 
 | `ASSISTANT_HOST` / `ASSISTANT_PORT` | `127.0.0.1` / `8848` | Keep loopback unless proxied |
 | `ASSISTANT_PASSWORD` | empty | Optional login |
 | `ASSISTANT_ENCRYPTION_KEY` | empty | Fernet key/passphrase; generated key file if unset |
-| `ASSISTANT_SECRET_KEY_FILE` | `~/.config/assistant/secret.key` | Location of the generated encryption key |
+| `ASSISTANT_SECRET_KEY_FILE` | `~/.config/nexus/secret.key` | Location of the generated encryption key |
 | `ASSISTANT_SEARXNG_URL` | `http://127.0.0.1:8888` | Local SearXNG |
 | `ASSISTANT_SANDBOX_ACCOUNT` | `sandbox` | Dedicated host account |
 | `ASSISTANT_SANDBOX_NETWORK` | `true` | Allow public internet in containers |
@@ -121,7 +121,7 @@ All settings use the `ASSISTANT_` prefix. See `.env.example` for the full list. 
 
 ```bash
 # backend with reload
-uv run uvicorn assistant.main:app --reload --port 8848
+uv run uvicorn nexus.main:app --reload --port 8848
 
 # frontend dev server (proxies /api to the backend)
 npm --prefix web run dev
@@ -135,7 +135,7 @@ uv run pytest
 
 ## Android (Capacitor)
 
-The React UI is packaged as a native Android app with [Capacitor](https://capacitorjs.com/). The web build is bundled into the APK; on first launch the app prompts for the address of your self-hosted Assistant server (LAN, Tailscale, or a reverse-proxied public URL) and remembers it. API calls use a bearer token (from login) instead of cookies, and the backend allows the `file://` WebView origin.
+The React UI is packaged as a native Android app with [Capacitor](https://capacitorjs.com/). The web build is bundled into the APK; on first launch the app prompts for the address of your self-hosted Nexus server (LAN, Tailscale, or a reverse-proxied public URL) and remembers it. API calls use a bearer token (from login) instead of cookies, and the backend allows the `file://` WebView origin.
 
 ### Build the APK
 
@@ -169,7 +169,7 @@ For a release build, create a signing keystore (`keytool -genkey ...`) and confi
 
 ### First run
 
-1. Start your Assistant server on a machine reachable from the phone (e.g. `ASSISTANT_HOST=0.0.0.0 uv run assistant`, with `ASSISTANT_PASSWORD` set and, for public access, HTTPS).
+1. Start your Nexus server on a machine reachable from the phone (e.g. `ASSISTANT_HOST=0.0.0.0 uv run nexus`, with `ASSISTANT_PASSWORD` set and, for public access, HTTPS).
 2. Open the app and enter the server address, e.g. `http://192.168.1.20:8848`.
 3. Unlock with your server password (if set). The session token is stored locally.
 4. Use Settings → Change server to switch instances or clear the remembered session.
@@ -190,7 +190,7 @@ Rebuild the sandbox image after editing `sandbox/Containerfile`:
 ## Security notes
 
 - This is a single-user app by design. There is no multi-tenant isolation, so do not share one instance between people who should not see each other's conversations. Run a separate instance (with its own database and encryption key) per person.
-- Chat transcripts, tool output, tasks, upload metadata, notes, and stored API keys are encrypted at rest with Fernet (AES-128-CBC + HMAC). The key is read from `ASSISTANT_ENCRYPTION_KEY` or generated at `~/.config/assistant/secret.key` with owner-only permissions. **Back up that key**: without it, the encrypted database cannot be recovered.
+- Chat transcripts, tool output, tasks, upload metadata, notes, and stored API keys are encrypted at rest with Fernet (AES-128-CBC + HMAC). The key is read from `ASSISTANT_ENCRYPTION_KEY` or generated at `~/.config/nexus/secret.key` with owner-only permissions. **Back up that key**: without it, the encrypted database cannot be recovered.
 - `data/`, `*.db`, `.env`, and key files are gitignored. Encrypting the fields means an accidentally committed database still does not expose chat content without the separate key.
 - The sandbox protects your home directory and keys from the model's code, not the app process from you. The app user can still read its own data and the encryption key.
 - The nftables guard blocks private address ranges for the sandbox UID. If you later bind the app to `0.0.0.0`, it remains outside that guard's scope for non-sandbox traffic; use a firewall or reverse proxy.

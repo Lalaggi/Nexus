@@ -28,7 +28,7 @@ export default function Connect({
     try {
       const health = await probeServer(base);
       console.log('[Connect] probe OK:', base, health);
-      setVersion(health.version ? `Assistant ${health.version}` : 'Assistant server');
+      setVersion(health.version ? `Nexus ${health.version}` : 'Nexus server');
       await onConnect(base);
     } catch (err) {
       console.error('[Connect] probe failed:', base, err);
@@ -52,10 +52,10 @@ export default function Connect({
     <div className="login-screen connect-screen">
       <form className="login-card connect-card" onSubmit={submit}>
         <Brandmark size={54} />
-        <span className="sheet-kicker">Assistant for Android</span>
+        <span className="sheet-kicker">Nexus for Android</span>
         <h1>Connect to your server</h1>
         <p>
-          Enter the address of your self-hosted Assistant. The app remembers it and talks to that
+          Enter the address of your self-hosted Nexus. The app remembers it and talks to that
           server directly.
         </p>
 

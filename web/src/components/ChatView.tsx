@@ -34,7 +34,7 @@ export default function ChatView({
     setAtBottom(node.scrollTop + node.clientHeight >= node.scrollHeight - 120);
   };
 
-  const lastAssistant = [...messages].reverse().find((message) => message.role === 'assistant');
+  const lastAssistant = [...messages].reverse().find((message) => message.role === 'nexus');
   const lastMessage = messages[messages.length - 1];
   const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user');
 

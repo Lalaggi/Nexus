@@ -1,4 +1,4 @@
-/* Assistant — Material 3 Expressive, dark.
+/* Nexus — Material 3 Expressive, dark.
    Tokens follow the same roles used by BrokenImage so the two apps feel related.
    No webfonts: the app must run offline. */
 
@@ -908,7 +908,7 @@ a {
   line-height: 1.55;
   color: var(--on-surface);
 }
-.assistant-message {
+.nexus-message {
   display: flex;
   gap: 12px;
   align-items: flex-start;
@@ -924,12 +924,12 @@ a {
   color: var(--primary);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
-.assistant-body {
+.nexus-body {
   flex: 1;
   min-width: 0;
   padding-top: 2px;
 }
-.assistant-name {
+.nexus-name {
   font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -1705,11 +1705,11 @@ a {
 .message-actions-user {
   justify-content: flex-end;
 }
-.message-actions-assistant {
+.message-actions-nexus {
   justify-content: flex-start;
 }
 .user-message:hover .message-actions-user,
-.assistant-message:hover .message-actions-assistant,
+.nexus-message:hover .message-actions-nexus,
 .message-actions:focus-within {
   opacity: 1;
 }
@@ -2999,10 +2999,10 @@ a {
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .assistant-message {
+  .nexus-message {
     gap: 9px;
   }
-  .assistant-message > .brandmark {
+  .nexus-message > .brandmark {
     width: 26px !important;
     height: 26px !important;
   }

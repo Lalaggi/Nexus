@@ -638,7 +638,7 @@ function PersonalisationPanel({
       <section className="settings-section">
         <div className="section-title">
           <User size={17} />
-          <h3>Assistant</h3>
+          <h3>Nexus</h3>
         </div>
         <div className="two-col">
           <label className="field">
@@ -696,7 +696,7 @@ function PersonalisationPanel({
           <h3>User notes (model memory)</h3>
         </div>
         <p className="section-note">
-          These are facts the assistant remembers about you across conversations. The model may
+          These are facts the nexus remembers about you across conversations. The model may
           have written some of these itself — review and remove anything incorrect or outdated.
         </p>
         {notes.length > 0 ? (

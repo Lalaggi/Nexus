@@ -138,10 +138,10 @@ export default function MessageView({
   }
 
   return (
-    <div className="message assistant-message">
+    <div className="message nexus-message">
       <Brandmark />
-      <div className="assistant-body">
-        <div className="assistant-name">Assistant</div>
+      <div className="nexus-body">
+        <div className="nexus-name">Nexus</div>
 
         <ToolTimeline
           events={message.tool_events || []}
@@ -154,7 +154,7 @@ export default function MessageView({
         {hasVisibleContent ? (
           <Markdown content={message.content} onOpenFile={onOpenFile} />
         ) : streaming ? (
-          <div className="thinking" aria-label="Assistant is thinking">
+          <div className="thinking" aria-label="Nexus is thinking">
             <span />
             <span />
             <span />
@@ -189,7 +189,7 @@ export default function MessageView({
         )}
 
         {!streaming && hasVisibleContent && (
-          <div className="message-actions message-actions-assistant">
+          <div className="message-actions message-actions-nexus">
             <button
               type="button"
               onClick={copy}

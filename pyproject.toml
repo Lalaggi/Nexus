@@ -1,7 +1,7 @@
 [project]
-name = "assistant"
+name = "nexus"
 version = "0.1.0"
-description = "A self-hosted, tool-using AI assistant"
+description = "A self-hosted, tool-using AI nexus"
 readme = "README.md"
 authors = [
     { name = "Ellie Wells", email = "elilovescomputers@gmail.com" }
@@ -20,7 +20,7 @@ dependencies = [
 ]
 
 [project.scripts]
-assistant = "assistant.__main__:main"
+nexus = "nexus.__main__:main"
 
 [project.optional-dependencies]
 dev = [

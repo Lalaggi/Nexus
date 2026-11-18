@@ -254,12 +254,12 @@ async def send_message(request: Request, chat_id: str, body: SendMessage):
     if chat.get("title") in {"", "New chat"}:
         await db.update_chat(chat_id, title=_title_from(body.content, attachments))
         chat = await db.get_chat(chat_id)
-    assistant = await db.add_message(chat_id, "assistant", "")
+    nexus = await db.add_message(chat_id, "nexus", "")
     state = start_run(chat_id)
     return _sse_stream(
         request,
         chat_id,
-        assistant["id"],
+        nexus["id"],
         state,
         model_id=selected_model,
         first_event={
@@ -296,12 +296,12 @@ async def regenerate(request: Request, chat_id: str):
     for message in messages[last_user_index + 1 :]:
         await db.delete_message(message["id"])
 
-    assistant = await db.add_message(chat_id, "assistant", "")
+    nexus = await db.add_message(chat_id, "nexus", "")
     state = start_run(chat_id)
     return _sse_stream(
         request,
         chat_id,
-        assistant["id"],
+        nexus["id"],
         state,
         model_id=chat.get("model") or DEFAULT_MODEL,
     )
@@ -313,8 +313,8 @@ async def patch_message(message_id: str, body: MessagePatch, request: Request):
     message = await db.get_message(message_id)
     if message is None:
         raise HTTPException(404, "Message not found")
-    if message["role"] != "assistant":
-        raise HTTPException(400, "Only assistant messages can be edited.")
+    if message["role"] != "nexus":
+        raise HTTPException(400, "Only nexus messages can be edited.")
     if body.content is None:
         raise HTTPException(400, "Content is required.")
     await db.set_message_content(message_id, body.content.strip())

@@ -26,7 +26,7 @@ export default function Login({ onLogin }: { onLogin: (password: string) => Prom
         <Brandmark size={54} />
         <span className="sheet-kicker">Self-hosted</span>
         <h1>Welcome back</h1>
-        <p>This Assistant instance is password protected.</p>
+        <p>This Nexus instance is password protected.</p>
         <label className="field">
           <span className="field-label">
             <LockKeyhole size={13} /> Password

@@ -1,4 +1,4 @@
-package com.elliewells.assistant;
+package com.elliewells.nexus;
 
 import android.os.Bundle;
 import android.view.View;

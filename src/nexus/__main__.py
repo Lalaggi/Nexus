@@ -10,7 +10,7 @@ from .config import CONFIG
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the Assistant web app")
+    parser = argparse.ArgumentParser(description="Run the Nexus web app")
     parser.add_argument("--host", default=CONFIG.host)
     parser.add_argument("--port", type=int, default=CONFIG.port)
     parser.add_argument("--reload", action="store_true")
@@ -18,7 +18,7 @@ def main() -> None:
 
     if args.reload:
         uvicorn.run(
-            "assistant.main:app",
+            "nexus.main:app",
             host=args.host,
             port=args.port,
             reload=True,
@@ -26,7 +26,7 @@ def main() -> None:
         )
     else:
         uvicorn.run(
-            "assistant.main:app",
+            "nexus.main:app",
             host=args.host,
             port=args.port,
             proxy_headers=True,

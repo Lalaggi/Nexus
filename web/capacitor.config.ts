@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.elliewells.assistant',
-  appName: 'Assistant',
+  appId: 'com.elliewells.nexus',
+  appName: 'Nexus',
   webDir: 'dist',
   // The web build is bundled into the Android app, so there is no remote
   // server URL. The local bundle is served over plain HTTP (server.androidScheme)

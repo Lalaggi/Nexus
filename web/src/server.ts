@@ -2,14 +2,14 @@ import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 
 /**
- * The web build is served by the Assistant backend, so every URL can stay
+ * The web build is served by the Nexus backend, so every URL can stay
  * relative. The Android build is a self-contained bundle on http://localhost
  * and must be pointed at a server the first time it runs.
  */
 export const IS_NATIVE = Capacitor.isNativePlatform();
 
-const SERVER_KEY = 'assistant.server_url';
-const TOKEN_KEY = 'assistant.session_token';
+const SERVER_KEY = 'nexus.server_url';
+const TOKEN_KEY = 'nexus.session_token';
 
 const BUILTIN_SERVER = normalizeServerUrl(
   (import.meta.env.VITE_ASSISTANT_SERVER as string | undefined) ?? '',
@@ -158,7 +158,7 @@ export async function probeServer(input: string): Promise<ProbeResult> {
     if (!response.ok) throw new Error(`Server answered HTTP ${response.status}.`);
     const data = (await response.json()) as { ok?: boolean; version?: string };
     if (data?.ok !== true) {
-      throw new Error('That URL does not look like an Assistant server.');
+      throw new Error('That URL does not look like an Nexus server.');
     }
     return { ok: true, version: data.version };
   } catch (error) {
