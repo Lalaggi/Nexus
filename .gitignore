@@ -31,6 +31,9 @@ web/android/local.properties
 web/android/*.iml
 web/android/app/build/
 
+# Android SDK
+android-sdk/
+
 # Signing keystore (create your own for release builds)
 *.jks
 *.keystore

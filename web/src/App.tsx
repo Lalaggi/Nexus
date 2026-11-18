@@ -748,6 +748,7 @@ export default function App() {
         onSelect={(id) => void loadChat(id)}
         onNew={resetToNew}
         onDelete={(id) => void deleteChat(id)}
+        onRefresh={() => void refreshChats()}
         onSettings={() => setSettingsOpen(true)}
         onCollapse={() => setSidebarOpen(false)}
       />

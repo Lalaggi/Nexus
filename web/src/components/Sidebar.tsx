@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { MessageSquare, PanelLeftClose, Plus, Search, Settings, Trash2, X } from 'lucide-react';
+import { MessageSquare, PanelLeftClose, Plus, RefreshCw, Search, Settings, Trash2, X } from 'lucide-react';
 import type { Chat, SettingsSnapshot } from '../types';
 import { relativeTime } from '../api';
 
@@ -21,6 +21,7 @@ export default function Sidebar({
   onSelect,
   onNew,
   onDelete,
+  onRefresh,
   onSettings,
   onCollapse,
 }: {
@@ -30,6 +31,7 @@ export default function Sidebar({
   onSelect: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
+  onRefresh?: () => void;
   onSettings: () => void;
   onCollapse: () => void;
 }) {
@@ -98,6 +100,17 @@ export default function Sidebar({
             >
               <PanelLeftClose size={18} />
             </button>
+            {onRefresh && (
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={onRefresh}
+                aria-label="Refresh chats"
+                title="Refresh chats"
+              >
+                <RefreshCw size={18} />
+              </button>
+            )}
           </div>
         )}
       </div>
