@@ -8,7 +8,20 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
+import { App as NativeApp } from '@capacitor/app';
+import { Browser } from '@capacitor/browser';
+import { StatusBar, Style } from '@capacitor/status-bar';
 import { ApiError, api, streamRequest, uploadFile, type FileTarget } from './api';
+import {
+  IS_NATIVE,
+  forgetServerUrl,
+  forgetToken,
+  getServerUrl,
+  isConfigured,
+  rememberToken,
+  saveServerUrl,
+  serverHost,
+} from './server';
 import type {
   Attachment,
   Chat,
@@ -27,6 +40,7 @@ import TasksPanel from './components/TasksPanel';
 import FilePreview from './components/FilePreview';
 import SettingsDialog, { type SettingsPatch, type TestResult } from './components/SettingsDialog';
 import Login from './components/Login';
+import Connect from './components/Connect';
 import { Brandmark } from './components/Brandmark';
 
 type Boot = 'loading' | 'login' | 'ready' | 'error';
@@ -50,6 +64,7 @@ function providerLabel(settings: SettingsSnapshot | null): string {
 export default function App() {
   const [boot, setBoot] = useState<Boot>('loading');
   const [bootError, setBootError] = useState('');
+  const [connected, setConnected] = useState<boolean | null>(null);
   const [settings, setSettings] = useState<SettingsSnapshot | null>(null);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const [searxngOk, setSearxngOk] = useState<boolean | null>(null);
@@ -79,14 +94,56 @@ export default function App() {
   const availableModels = useMemo(() => {
     if (!settings) return [];
     const models = [...settings.models];
-    if (settings.custom_model_id && !models.find((m) => m.id === settings.custom_model_id)) {
-      models.push({ id: settings.custom_model_id, name: settings.custom_model_id });
+    // Show every custom model added in Settings → Provider in the composer
+    // selector, not just the one currently set as custom_model_id.
+    for (const custom of settings.custom_models) {
+      if (!models.find((m) => m.id === custom.model_id)) {
+        models.push({ id: custom.model_id, name: custom.name });
+      }
     }
     return models;
   }, [settings]);
   const toastTimer = useRef<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const loadChatRef = useRef<(id: string) => Promise<void>>(async () => {});
+
+  useEffect(() => {
+    if (IS_NATIVE) setConnected(isConfigured());
+  }, []);
+
+  useEffect(() => {
+    if (IS_NATIVE && connected) {
+      const handleStatusChange = async (state: { isExitApp: boolean }) => {
+        if (state.isExitApp) {
+          // App is being backgrounded/exited; drop the remembered session so a
+          // relaunch re-prompts for the server when the token is no longer valid.
+          forgetToken();
+          setConnected(false);
+        }
+      };
+      (NativeApp as any).addListener('appStatusChange', handleStatusChange);
+      return () => (NativeApp as any).removeListener('appStatusChange', handleStatusChange);
+    }
+    return undefined;
+  }, [IS_NATIVE, connected]);
+
+  const handleConnect = async (url: string) => {
+    saveServerUrl(url);
+    setConnected(true);
+    void bootApp();
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await api('/api/logout', { method: 'POST' });
+    } catch {
+      /* ignore */
+    }
+    forgetToken();
+    setConnected(false);
+    setBoot('loading');
+    setConnected(false);
+  };
 
   const notify = useCallback((message: string) => {
     setToast(message);
@@ -136,8 +193,10 @@ export default function App() {
     setGoal('');
     setDraft('');
     setDraftAttachments([]);
+    setSelectedModelId(settings?.custom_model_id || settings?.model.id || '');
     setPanel(null);
     setPreview(null);
+    setFiles([]);
     window.history.pushState({}, '', '/');
     window.setTimeout(() => inputRef.current?.focus(), 50);
   }, []);
@@ -161,7 +220,9 @@ export default function App() {
         );
         setTasks(data.tasks);
         setGoal(data.chat.goal || '');
+        setSelectedModelId(data.chat.model || settings?.custom_model_id || settings?.model.id || '');
         setPreview(null);
+        setFiles([]);
         window.history.pushState({}, '', `?c=${data.chat.id}`);
         if (window.innerWidth < 900) setSidebarOpen(false);
       } catch (error) {
@@ -186,7 +247,7 @@ export default function App() {
         api<Chat[]>('/api/chats'),
       ]);
       setSettings(snapshot);
-      setSelectedModelId(snapshot.custom_model_id || snapshot.model.id);
+      setSelectedModelId(snapshot.custom_model_id || snapshot.model.id || '');
       setChats(list);
       setBoot('ready');
       const id = new URLSearchParams(window.location.search).get('c');
@@ -213,11 +274,19 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // On native, only boot once a server URL has been saved (or built in);
+    // otherwise the Connect screen is shown and bootApp is triggered by
+    // handleConnect after the user provides one.
+    if (IS_NATIVE && !isConfigured()) return;
     void bootApp();
   }, [bootApp]);
 
   const login = async (password: string) => {
-    await api('/api/login', { method: 'POST', body: JSON.stringify({ password }) });
+    const data = await api<{ ok: boolean; token?: string }>('/api/login', {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    });
+    if (data.token) rememberToken(data.token);
     await bootApp();
   };
 
@@ -489,6 +558,7 @@ export default function App() {
     startStream(chat.id, `/api/chats/${chat.id}/messages`, 'POST', {
       content,
       attachment_ids: attachments.map((attachment) => attachment.id),
+      model: selectedModelId,
     }, localUserId);
   };
 
@@ -552,14 +622,24 @@ export default function App() {
   const fetchFiles = useCallback(async (kind: 'outputs' | 'uploads') => {
     setLoadingFiles(true);
     try {
-      const data = await api<{ files: FileItem[] }>(`/api/files/list?kind=${kind}`);
+      const url = activeChat?.id
+        ? `/api/files/list?kind=${kind}&chat_id=${encodeURIComponent(activeChat.id)}`
+        : `/api/files/list?kind=${kind}`;
+      const data = await api<{ files: FileItem[] }>(url);
       setFiles(data.files);
     } catch (error) {
       notify(error instanceof Error ? error.message : 'Could not list files.');
     } finally {
       setLoadingFiles(false);
     }
-  }, [notify]);
+  }, [notify, activeChat?.id]);
+
+  // Files are scoped to a chat. Refresh when switching chats while the file
+  // panel is open so the list never shows another conversation's files.
+  useEffect(() => {
+    if (panel === null || panelTab !== 'files') return;
+    void fetchFiles(fileKind);
+  }, [activeChat?.id, fetchFiles, fileKind, panel, panelTab]);
 
   const openPanel = (tab: 'tasks' | 'files') => {
     if (panel === tab) {
@@ -568,12 +648,10 @@ export default function App() {
     }
     setPanel(tab);
     setPanelTab(tab);
-    if (tab === 'files') void fetchFiles(fileKind);
   };
 
   const changeFileKind = (kind: 'outputs' | 'uploads') => {
     setFileKind(kind);
-    void fetchFiles(kind);
   };
 
   const updateTask = async (id: string, status: TaskStatus) => {
@@ -617,6 +695,15 @@ export default function App() {
       inputRef.current?.setSelectionRange(length, length);
     }, 40);
   };
+
+  if (IS_NATIVE && connected === false) {
+    return (
+      <Connect
+        initialUrl={getServerUrl() || ''}
+        onConnect={handleConnect}
+      />
+    );
+  }
 
   if (boot === 'login') return <Login onLogin={login} />;
 
@@ -808,9 +895,9 @@ export default function App() {
         files={files}
         fileKind={fileKind}
         loadingFiles={loadingFiles}
+        hasActiveChat={Boolean(activeChat)}
         onTab={(tab) => {
           setPanelTab(tab);
-          if (tab === 'files') void fetchFiles(fileKind);
         }}
         onClose={() => setPanel(null)}
         onOpenFile={setPreview}
@@ -828,6 +915,8 @@ export default function App() {
         onClose={() => setSettingsOpen(false)}
         onSave={saveSettings}
         onTest={testConnection}
+        onNotify={notify}
+        onSignOut={handleSignOut}
       />
 
       {toast && (

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Download, ExternalLink, X } from 'lucide-react';
 import Markdown from './Markdown';
 import type { FileTarget } from '../api';
+import { downloadUrl } from '../server';
 
 const TEXT_EXT = /\.(md|markdown|txt|log|csv|tsv|json|jsonl|ya?ml|toml|ini|cfg|py|ts|tsx|js|jsx|css|html?|xml|sh|sql|rs|go|java|c|h|cpp|rb|tex|rst|srt|vtt)$/i;
 const CODE_EXT = /\.(py|ts|tsx|js|jsx|css|html?|xml|sh|sql|rs|go|java|c|h|cpp|rb|json|ya?ml|toml)$/i;
@@ -79,7 +80,7 @@ export default function FilePreview({
             <a className="icon-btn" href={file.url} target="_blank" rel="noreferrer" title="Open raw">
               <ExternalLink size={17} />
             </a>
-            <a className="icon-btn" href={`${file.url}?download=1`} title="Download" download>
+            <a className="icon-btn" href={downloadUrl(file.url)} title="Download" download>
               <Download size={17} />
             </a>
             <button type="button" className="icon-btn" onClick={onClose} aria-label="Close preview">
@@ -109,7 +110,7 @@ export default function FilePreview({
           {!isImage && !isPdf && !isText && !isVideo && !isAudio && (
             <div className="preview-unsupported">
               <p>No inline preview for this file type.</p>
-              <a className="btn-primary" href={`${file.url}?download=1`} download>
+              <a className="btn-primary" href={downloadUrl(file.url)} download>
                 <Download size={16} />
                 Download {file.name}
               </a>

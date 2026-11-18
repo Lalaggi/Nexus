@@ -21,8 +21,12 @@ import {
 import type { CustomModel, SettingsSnapshot } from '../types';
 import {
   addCustomModel,
+  createNote,
   deleteCustomModel,
+  deleteNote,
   listCustomModels,
+  listNotes,
+  type Note,
 } from '../api';
 
 export interface SettingsPatch {
@@ -60,6 +64,8 @@ export default function SettingsDialog({
   onClose,
   onSave,
   onTest,
+  onNotify,
+  onSignOut,
 }: {
   open: boolean;
   settings: SettingsSnapshot | null;
@@ -67,6 +73,8 @@ export default function SettingsDialog({
   onClose: () => void;
   onSave: (patch: SettingsPatch) => Promise<void>;
   onTest: (provider: string) => Promise<TestResult>;
+  onNotify: (message: string) => void;
+  onSignOut?: () => void;
 }) {
   const [provider, setProvider] = useState<'auto' | 'nim' | 'openrouter'>('auto');
   const [userName, setUserName] = useState('');
@@ -89,6 +97,7 @@ export default function SettingsDialog({
   const [addingModel, setAddingModel] = useState(false);
 
   // Notes
+  const [notes, setNotes] = useState<Note[]>([]);
   const [newNoteKey, setNewNoteKey] = useState('');
   const [newNoteValue, setNewNoteValue] = useState('');
   const [addingNote, setAddingNote] = useState(false);
@@ -107,7 +116,17 @@ export default function SettingsDialog({
     setTest(null);
     setCategory('provider');
     void refreshCustomModels();
+    void refreshNotes();
   }, [open, settings]);
+
+  const refreshNotes = async () => {
+    try {
+      const noteList = await listNotes();
+      setNotes(noteList);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const refreshCustomModels = async () => {
     try {
@@ -201,13 +220,23 @@ export default function SettingsDialog({
     if (!key || !value) return;
     setAddingNote(true);
     try {
-      // Use the note_set tool via settings save is not applicable;
-      // notes are managed through the sandbox tool by the model.
-      // Here we just track locally until we add a notes API.
-      // For now, store as a setting-like approach isn't available,
-      // so we'll add a notes API endpoint.
+      const note = await createNote(key, value);
+      setNotes((prev) => [...prev, note]);
+      setNewNoteKey('');
+      setNewNoteValue('');
+    } catch (error) {
+      onNotify(error instanceof Error ? error.message : 'Could not add note.');
     } finally {
       setAddingNote(false);
+    }
+  };
+
+  const removeNote = async (key: string) => {
+    try {
+      await deleteNote(key);
+      setNotes((prev) => prev.filter((n) => n.key !== key));
+    } catch (error) {
+      onNotify(error instanceof Error ? error.message : 'Could not remove note.');
     }
   };
 
@@ -284,6 +313,14 @@ export default function SettingsDialog({
                 setTemperature={setTemperature}
                 customInstructions={customInstructions}
                 setCustomInstructions={setCustomInstructions}
+                notes={notes}
+                newNoteKey={newNoteKey}
+                setNewNoteKey={setNewNoteKey}
+                newNoteValue={newNoteValue}
+                setNewNoteValue={setNewNoteValue}
+                addingNote={addingNote}
+                addNote={addNote}
+                removeNote={removeNote}
               />
             )}
             {category === 'stats' && (
@@ -295,6 +332,11 @@ export default function SettingsDialog({
         <footer className="dialog-foot">
           <span className="dialog-hint">Changes apply to new messages.</span>
           <div className="dialog-actions">
+            {onSignOut && (
+              <button type="button" className="btn-ghost" onClick={() => { onClose(); onSignOut(); }}>
+                Change server
+              </button>
+            )}
             <button type="button" className="btn-ghost" onClick={onClose}>
               Cancel
             </button>
@@ -566,6 +608,14 @@ function PersonalisationPanel({
   setTemperature,
   customInstructions,
   setCustomInstructions,
+  notes,
+  newNoteKey,
+  setNewNoteKey,
+  newNoteValue,
+  setNewNoteValue,
+  addingNote,
+  addNote,
+  removeNote,
 }: {
   settings: SettingsSnapshot;
   userName: string;
@@ -574,6 +624,14 @@ function PersonalisationPanel({
   setTemperature: (value: number) => void;
   customInstructions: string;
   setCustomInstructions: (value: string) => void;
+  notes: Note[];
+  newNoteKey: string;
+  setNewNoteKey: (value: string) => void;
+  newNoteValue: string;
+  setNewNoteValue: (value: string) => void;
+  addingNote: boolean;
+  addNote: () => void;
+  removeNote: (key: string) => void;
 }) {
   return (
     <>
@@ -630,6 +688,72 @@ function PersonalisationPanel({
           preferences (for example, your preferred editor, operating system, or answer style). Keep
           it short — these are sent with every message.
         </p>
+      </section>
+
+      <section className="settings-section" style={{ marginTop: 20 }}>
+        <div className="section-title">
+          <ShieldAlert size={17} />
+          <h3>User notes (model memory)</h3>
+        </div>
+        <p className="section-note">
+          These are facts the assistant remembers about you across conversations. The model may
+          have written some of these itself — review and remove anything incorrect or outdated.
+        </p>
+        {notes.length > 0 ? (
+          <div className="custom-model-list">
+            {notes.map((note) => (
+              <div key={note.key} className="custom-model-item">
+                <span className="custom-model-name">{note.key}</span>
+                <span className="custom-model-id" title={note.value}>
+                  {note.value}
+                </span>
+                <button
+                  type="button"
+                  className="icon-btn danger"
+                  onClick={() => removeNote(note.key)}
+                  aria-label={`Remove note ${note.key}`}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="section-note">No user notes saved yet.</p>
+        )}
+        <div className="two-col" style={{ marginTop: 10 }}>
+          <label className="field">
+            <span className="field-label">Key</span>
+            <input
+              type="text"
+              value={newNoteKey}
+              onChange={(event) => setNewNoteKey(event.target.value)}
+              placeholder="e.g. editor"
+              spellCheck={false}
+            />
+          </label>
+          <label className="field">
+            <span className="field-label">Value</span>
+            <input
+              type="text"
+              value={newNoteValue}
+              onChange={(event) => setNewNoteValue(event.target.value)}
+              placeholder="e.g. prefers neovim"
+              spellCheck={false}
+            />
+          </label>
+        </div>
+        <div className="test-row">
+          <button
+            type="button"
+            className="btn-tonal"
+            onClick={addNote}
+            disabled={addingNote || !newNoteKey.trim() || !newNoteValue.trim()}
+          >
+            {addingNote ? <Loader2 size={15} className="spin" /> : <Plus size={15} />}
+            Add note
+          </button>
+        </div>
       </section>
     </>
   );

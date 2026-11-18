@@ -259,7 +259,7 @@ async def login(request: Request, body: LoginBody) -> dict:
         _failures[ip].append(time.monotonic())
         raise HTTPException(401, "Incorrect password")
     _failures.pop(ip, None)
-    response = JSONResponse({"ok": True})
+    response = JSONResponse({"ok": True, "token": request.app.state.session_token})
     response.set_cookie(
         "assistant_session",
         request.app.state.session_token,

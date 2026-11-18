@@ -4,6 +4,8 @@ not per-chat, and should only be written for important, lasting facts."""
 
 from __future__ import annotations
 
+import re
+
 from ..config import CONFIG
 from .base import Tool, ToolContext, ToolResult, register
 
@@ -118,8 +120,6 @@ async def note_delete(ctx: ToolContext, args: dict) -> ToolResult:
         summary=f"Note {key} removed",
     )
 
-
-import re  # noqa: E402
 
 register(
     Tool(

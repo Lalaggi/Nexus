@@ -518,6 +518,14 @@ a {
   display: none;
 }
 
+@media (min-width: 901px) {
+  .sidebar-tools .collapse-btn {
+    /* The topbar Menu button already toggles the sidebar on desktop,
+       so the sidebar's own collapse button is redundant there. */
+    display: none;
+  }
+}
+
 /* --------------------------------------------------------------- landing */
 .landing {
   flex: 1;
@@ -674,6 +682,7 @@ a {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  min-width: 0;
   padding: 6px 12px 12px;
 }
 .composer-left,
@@ -681,6 +690,22 @@ a {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+.composer-left {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+.composer-right {
+  flex: none;
+}
+.model-pill {
+  /* Let the select shrink below its content width on narrow phones instead of
+     pushing the send button off the right edge. */
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  max-width: 220px;
 }
 .icon-btn.attach {
   width: 36px;
@@ -1090,7 +1115,7 @@ a {
 }
 .markdown table {
   border-collapse: collapse;
-  width: 100%;
+  min-width: 100%;
   font-size: 0.93em;
 }
 .markdown th,
@@ -1099,6 +1124,7 @@ a {
   text-align: left;
   border-bottom: 1px solid var(--outline-variant);
   border-right: 1px solid var(--outline-variant);
+  white-space: nowrap;
 }
 .markdown th:last-child,
 .markdown td:last-child {
@@ -2152,7 +2178,7 @@ a {
   animation: fadeIn var(--dur-short) var(--ease-emphasized);
 }
 .dialog {
-  width: min(680px, 100%);
+  width: min(1180px, 100%);
   max-height: min(90dvh, 900px);
   display: flex;
   flex-direction: column;
@@ -2472,8 +2498,8 @@ a {
 /* --------------------------------------------------------------- settings layout */
 .settings-layout {
   display: grid;
-  grid-template-columns: 220px 1fr;
-  gap: 16px;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 20px;
   align-items: start;
 }
 
@@ -2539,12 +2565,14 @@ a {
 @media (max-width: 700px) {
   .settings-layout {
     grid-template-columns: 1fr;
+    gap: 24px;
   }
 
   .settings-sidebar {
     flex-direction: row;
     overflow-x: auto;
-    padding-bottom: 8px;
+    padding-bottom: 12px;
+    margin-bottom: 8px;
     scrollbar-width: none;
   }
 
@@ -2640,11 +2668,15 @@ a {
 
 .custom-model-id {
   flex: 1;
+  min-width: 0;
   margin: 0 8px;
   font-family: var(--mono);
   font-size: 10.5px;
   color: var(--on-surface-variant);
   overflow-wrap: anywhere;
+  word-break: break-all;
+  white-space: normal;
+  overflow: hidden;
 }
 
 .custom-model-item .danger {
@@ -2917,6 +2949,12 @@ a {
   }
   .dialog-actions {
     justify-content: flex-end;
+    gap: 6px;
+  }
+  .dialog-actions button {
+    white-space: nowrap;
+    padding: 0 10px;
+    font-size: 11.5px;
   }
   .dialog-hint {
     text-align: center;

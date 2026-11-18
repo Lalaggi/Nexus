@@ -110,6 +110,8 @@ All settings use the `ASSISTANT_` prefix. See `.env.example` for the full list. 
 | `ASSISTANT_NVIDIA_API_KEY` / `ASSISTANT_OPENROUTER_API_KEY` | empty | At least one required |
 | `ASSISTANT_HOST` / `ASSISTANT_PORT` | `127.0.0.1` / `8848` | Keep loopback unless proxied |
 | `ASSISTANT_PASSWORD` | empty | Optional login |
+| `ASSISTANT_ENCRYPTION_KEY` | empty | Fernet key/passphrase; generated key file if unset |
+| `ASSISTANT_SECRET_KEY_FILE` | `~/.config/assistant/secret.key` | Location of the generated encryption key |
 | `ASSISTANT_SEARXNG_URL` | `http://127.0.0.1:8888` | Local SearXNG |
 | `ASSISTANT_SANDBOX_ACCOUNT` | `sandbox` | Dedicated host account |
 | `ASSISTANT_SANDBOX_NETWORK` | `true` | Allow public internet in containers |
@@ -131,6 +133,53 @@ npm --prefix web run build
 uv run pytest
 ```
 
+## Android (Capacitor)
+
+The React UI is packaged as a native Android app with [Capacitor](https://capacitorjs.com/). The web build is bundled into the APK; on first launch the app prompts for the address of your self-hosted Assistant server (LAN, Tailscale, or a reverse-proxied public URL) and remembers it. API calls use a bearer token (from login) instead of cookies, and the backend allows the `file://` WebView origin.
+
+### Build the APK
+
+You need the Android SDK (command-line tools, platform-tools, build-tools, and an Android platform) and a JDK (Java 17–21 for Gradle 8.14):
+
+```bash
+# install Android SDK command-line tools into ~/Android/Sdk, then:
+export ANDROID_SDK_ROOT=$HOME/Android/Sdk
+export ANDROID_HOME=$HOME/Android/Sdk
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk   # or java-17-openjdk
+
+# from the repo root
+npm --prefix web run cap:build   # builds the web bundle and syncs it into android/
+cd web/android
+./gradlew assembleDebug
+```
+
+The unsigned debug APK is output at:
+
+```
+web/android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Install on a device/emulator:
+
+```bash
+adb install web/android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+For a release build, create a signing keystore (`keytool -genkey ...`) and configure `web/android/app/build.gradle` (`signingConfigs`), then run `./gradlew assembleRelease`.
+
+### First run
+
+1. Start your Assistant server on a machine reachable from the phone (e.g. `ASSISTANT_HOST=0.0.0.0 uv run assistant`, with `ASSISTANT_PASSWORD` set and, for public access, HTTPS).
+2. Open the app and enter the server address, e.g. `http://192.168.1.20:8848`.
+3. Unlock with your server password (if set). The session token is stored locally.
+4. Use Settings → Change server to switch instances or clear the remembered session.
+
+### Native plugins used
+
+`@capacitor/app`, `@capacitor/browser`, `@capacitor/keyboard`, `@capacitor/status-bar`, `@capacitor/splash-screen`.
+
+External links (web search results, fetched pages, images) open in the system browser; file previews/downloads go through the app with the session token in the query string.
+
 Rebuild the sandbox image after editing `sandbox/Containerfile`:
 
 ```bash
@@ -140,8 +189,10 @@ Rebuild the sandbox image after editing `sandbox/Containerfile`:
 
 ## Security notes
 
-- This is a single-user app. Do not expose it to the internet without a password and HTTPS.
-- The sandbox protects your home directory and keys from the model's code, not the app process from you. The app user can still read its own data.
+- This is a single-user app by design. There is no multi-tenant isolation, so do not share one instance between people who should not see each other's conversations. Run a separate instance (with its own database and encryption key) per person.
+- Chat transcripts, tool output, tasks, upload metadata, notes, and stored API keys are encrypted at rest with Fernet (AES-128-CBC + HMAC). The key is read from `ASSISTANT_ENCRYPTION_KEY` or generated at `~/.config/assistant/secret.key` with owner-only permissions. **Back up that key**: without it, the encrypted database cannot be recovered.
+- `data/`, `*.db`, `.env`, and key files are gitignored. Encrypting the fields means an accidentally committed database still does not expose chat content without the separate key.
+- The sandbox protects your home directory and keys from the model's code, not the app process from you. The app user can still read its own data and the encryption key.
 - The nftables guard blocks private address ranges for the sandbox UID. If you later bind the app to `0.0.0.0`, it remains outside that guard's scope for non-sandbox traffic; use a firewall or reverse proxy.
 - Active files are served as attachments with a restrictive CSP. Do not change that without understanding the XSS risk.
-- API keys live in `.env` or the environment. The setup script chmods `.env` and `data/` to owner-only.
+- API keys live in `.env`, the environment, or the encrypted settings table. The setup script chmods `.env` and `data/` to owner-only.

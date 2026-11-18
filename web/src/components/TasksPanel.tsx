@@ -54,6 +54,7 @@ export default function TasksPanel({
   files,
   fileKind,
   loadingFiles,
+  hasActiveChat,
   onTab,
   onClose,
   onOpenFile,
@@ -68,6 +69,7 @@ export default function TasksPanel({
   files: FileItem[];
   fileKind: 'outputs' | 'uploads';
   loadingFiles: boolean;
+  hasActiveChat: boolean;
   onTab: (tab: 'tasks' | 'files') => void;
   onClose: () => void;
   onOpenFile: (file: FileItem) => void;
@@ -204,7 +206,16 @@ export default function TasksPanel({
               </button>
             </div>
 
-            {files.length > 0 ? (
+            {!hasActiveChat ? (
+              <div className="sheet-empty">
+                <FileText size={30} />
+                <p>Open a chat to see its files</p>
+                <span>
+                  Files are scoped to each conversation. Start or select a chat, then the
+                  assistant's outputs and your uploads will appear here.
+                </span>
+              </div>
+            ) : files.length > 0 ? (
               <div className="file-list">
                 {files.map((file) => (
                   <button

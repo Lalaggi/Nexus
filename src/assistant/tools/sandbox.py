@@ -198,6 +198,19 @@ async def run_sandbox(ctx: ToolContext, args: dict) -> ToolResult:
     outputs = CONFIG.chat_outputs_dir(ctx.chat_id)
     for directory in (workspace, uploads, outputs):
         directory.mkdir(parents=True, exist_ok=True)
+
+    # Persistent Python site-packages so pip-installed packages survive across
+    # sandbox calls. Each call is a fresh --rm container whose root filesystem
+    # is discarded, so packages installed into the container's site-packages
+    # vanish when it exits. We install into the mounted workspace instead and
+    # tell both Python and pip to look there.
+    py_packages_dir = workspace / ".python-packages"
+    pip_conf_dir = workspace / ".pip"
+    py_packages_dir.mkdir(parents=True, exist_ok=True)
+    pip_conf_dir.mkdir(parents=True, exist_ok=True)
+    (pip_conf_dir / "pip.conf").write_text(
+        "[install]\ntarget = /workspace/.python-packages\n", encoding="utf-8"
+    )
     name = f"assistant-sbx-{uuid.uuid4().hex[:12]}"
 
     outputs_before = _snapshot(outputs)
@@ -250,6 +263,10 @@ async def run_sandbox(ctx: ToolContext, args: dict) -> ToolResult:
         "PYTHONUNBUFFERED=1",
         "-e",
         "PYTHONDONTWRITEBYTECODE=1",
+        "-e",
+        "PYTHONPATH=/workspace/.python-packages",
+        "-e",
+        "PIP_CONFIG_FILE=/workspace/.pip/pip.conf",
         "-e",
         "MPLBACKEND=Agg",
         "-e",

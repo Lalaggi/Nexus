@@ -9,12 +9,13 @@ import secrets
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import CONFIG
 from .db import Database
-from .routes import chats, files, settings
+from .routes import chats, files, notes, settings
 from .tools.base import load_builtin_tools
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -39,6 +40,12 @@ async def lifespan(app: FastAPI):
     app.state.db = db
     app.state.session_token = _session_token()
     logger.info("data=%s uploads=%s outputs=%s", CONFIG.data_dir, CONFIG.uploads_dir, CONFIG.outputs_dir)
+    logger.info(
+        "database encryption enabled (%s)",
+        "ASSISTANT_ENCRYPTION_KEY"
+        if CONFIG.encryption_key.strip()
+        else f"key file: {CONFIG.secret_key_path}",
+    )
     if CONFIG.password:
         logger.info("password protection is enabled")
     else:
@@ -50,17 +57,52 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Assistant", version="0.1.0", lifespan=lifespan, docs_url="/api/docs")
 
 
+def _request_token(request: Request) -> str:
+    """Session token from the web cookie, a bearer header, or a file URL.
+
+    The packaged Android app runs on https://localhost, so it cannot use the
+    web app's same-site cookie. It sends Authorization: Bearer instead, and
+    appends ?access_token= to file URLs loaded by <img>/<iframe>/download links
+    where a header cannot be attached.
+    """
+    cookie = request.cookies.get("assistant_session", "")
+    if cookie:
+        return cookie
+    header = request.headers.get("authorization", "")
+    if header.lower().startswith("bearer "):
+        return header[7:].strip()
+    if request.method == "GET" and request.url.path.startswith("/api/files/"):
+        return request.query_params.get("access_token", "")
+    return ""
+
+
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     request.state.authenticated = False
+    if request.method == "OPTIONS":
+        # CORS preflight never carries credentials.
+        return await call_next(request)
     if CONFIG.password and request.url.path.startswith("/api/"):
-        cookie = request.cookies.get("assistant_session", "")
-        request.state.authenticated = hmac.compare_digest(cookie, request.app.state.session_token)
+        supplied = _request_token(request)
+        request.state.authenticated = hmac.compare_digest(supplied, request.app.state.session_token)
         if not request.state.authenticated and request.url.path not in PUBLIC_API:
             return JSONResponse({"detail": "Authentication required"}, status_code=401)
     else:
         request.state.authenticated = True
     return await call_next(request)
+
+
+# Added after the auth middleware so CORS wraps it and can answer preflight
+# requests and add headers to 401 responses. The app does not use cookies
+# cross-origin; auth is a bearer token.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CONFIG.cors_origin_list,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
+    expose_headers=["Content-Disposition"],
+    max_age=3600,
+)
 
 
 @app.middleware("http")
@@ -75,7 +117,7 @@ async def security_headers(request: Request, call_next):
         "Content-Security-Policy",
         "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'self'; "
         "form-action 'self'; img-src 'self' data: blob:; media-src 'self' blob:; "
-        "style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' http: https:; "
         "font-src 'self' data:; frame-src 'self' blob:",
     )
     return response
@@ -84,6 +126,7 @@ async def security_headers(request: Request, call_next):
 app.include_router(chats.router)
 app.include_router(files.router)
 app.include_router(files.upload_router)
+app.include_router(notes.router)
 app.include_router(settings.router)
 
 

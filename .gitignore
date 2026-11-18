@@ -15,11 +15,25 @@ data/
 *.db
 *.db-wal
 *.db-shm
+*.key
+secret.key
 
 # Frontend
 web/node_modules/
 web/dist/
 web/.vite/
+*.tsbuildinfo
+
+# Capacitor Android (native project is regenerable with `npm run cap:sync`)
+web/android/.gradle/
+web/android/.cxx/
+web/android/local.properties
+web/android/*.iml
+web/android/app/build/
+
+# Signing keystore (create your own for release builds)
+*.jks
+*.keystore
 
 # Editor/OS noise
 .DS_Store

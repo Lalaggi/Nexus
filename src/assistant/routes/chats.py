@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from ..agent import RUNS, run_turn, start_run
 from ..config import CONFIG
 from ..db import Database, now
-from ..providers import ProviderError, resolve_provider
+from ..providers import DEFAULT_MODEL, ProviderError, resolve_provider
 
 router = APIRouter(prefix="/api", tags=["chats"])
 
@@ -26,6 +26,7 @@ def db_of(request: Request) -> Database:
 
 class ChatCreate(BaseModel):
     title: str | None = None
+    model: str | None = None
 
 
 class ChatPatch(BaseModel):
@@ -37,6 +38,7 @@ class ChatPatch(BaseModel):
 class SendMessage(BaseModel):
     content: str = ""
     attachment_ids: list[str] = Field(default_factory=list)
+    model: str | None = None
 
 
 class TaskPatch(BaseModel):
@@ -67,7 +69,8 @@ async def list_chats(request: Request) -> list[dict]:
 async def create_chat(request: Request, body: ChatCreate | None = None) -> dict:
     db = db_of(request)
     title = ((body.title if body else None) or "New chat").strip()[:120]
-    return await db.create_chat(title)
+    model = (body.model if body else None) or DEFAULT_MODEL
+    return await db.create_chat(title, model=model)
 
 
 @router.get("/chats/{chat_id}")
@@ -132,6 +135,7 @@ def _sse_stream(
     chat_id: str,
     assistant_id: str,
     state,
+    model_id: str | None = None,
     first_event: dict | None = None,
 ) -> StreamingResponse:
     async def generator():
@@ -141,7 +145,7 @@ def _sse_stream(
             await queue.put(event)
 
         task = asyncio.create_task(
-            run_turn(db_of(request), chat_id, assistant_id, emit, state)
+            run_turn(db_of(request), chat_id, assistant_id, emit, state, model_id=model_id)
         )
 
         try:
@@ -234,8 +238,13 @@ async def send_message(request: Request, chat_id: str, body: SendMessage):
     if not body.content.strip() and not attachments:
         raise HTTPException(400, "Message is empty.")
 
+    # Remember the model choice on the chat so it persists across turns.
+    selected_model = body.model or chat.get("model") or DEFAULT_MODEL
+    if selected_model != chat.get("model"):
+        await db.update_chat(chat_id, model=selected_model)
+
     try:
-        _, _, _ = await resolve_provider(db, chat.get("provider"))
+        resolved = await resolve_provider(db, selected_model, chat.get("provider"))
     except ProviderError as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -252,7 +261,16 @@ async def send_message(request: Request, chat_id: str, body: SendMessage):
         chat_id,
         assistant["id"],
         state,
-        first_event={"type": "user_message", "message": user_message, "chat": chat},
+        model_id=selected_model,
+        first_event={
+            "type": "user_message",
+            "message": user_message,
+            "chat": chat,
+            "provider": resolved.provider.id,
+            "provider_label": resolved.provider.label,
+            "model": resolved.name,
+            "model_id": resolved.model_id,
+        },
     )
 
 
@@ -280,26 +298,26 @@ async def regenerate(request: Request, chat_id: str):
 
     assistant = await db.add_message(chat_id, "assistant", "")
     state = start_run(chat_id)
-    return _sse_stream(request, chat_id, assistant["id"], state)
+    return _sse_stream(
+        request,
+        chat_id,
+        assistant["id"],
+        state,
+        model_id=chat.get("model") or DEFAULT_MODEL,
+    )
 
 
 @router.patch("/messages/{message_id}")
 async def patch_message(message_id: str, body: MessagePatch, request: Request):
     db = db_of(request)
-    message = await db._fetchone(
-        "SELECT * FROM messages WHERE id = ?", (message_id,)
-    )
+    message = await db.get_message(message_id)
     if message is None:
         raise HTTPException(404, "Message not found")
     if message["role"] != "assistant":
         raise HTTPException(400, "Only assistant messages can be edited.")
     if body.content is None:
         raise HTTPException(400, "Content is required.")
-    await db.conn.execute(
-        "UPDATE messages SET content = ? WHERE id = ?",
-        (body.content.strip(), message_id),
-    )
-    await db.conn.commit()
+    await db.set_message_content(message_id, body.content.strip())
     await db.touch_chat(message["chat_id"])
     return {"ok": True, "message_id": message_id}
 

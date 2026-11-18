@@ -12,6 +12,7 @@ import { attachmentKind, formatBytes, hostOf, type FileTarget } from '../api';
 import Markdown from './Markdown';
 import ToolTimeline, { sourceList } from './ToolTimeline';
 import { Brandmark } from './Brandmark';
+import { openExternal } from '../server';
 
 function AttachmentGrid({
   attachments,
@@ -172,8 +173,10 @@ export default function MessageView({
                 <a
                   key={source.url}
                   href={source.url}
-                  target="_blank"
-                  rel="noreferrer noopener"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void openExternal(source.url);
+                  }}
                   className="source-chip"
                   title={source.title}
                 >

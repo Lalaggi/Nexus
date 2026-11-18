@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { Check, Copy } from 'lucide-react';
 import { fileTargetFromHref, type FileTarget } from '../api';
+import { openExternal } from '../server';
 
 function hastText(node: any): string {
   if (!node) return '';
@@ -97,7 +98,14 @@ export default function Markdown({ content, onOpenFile }: MarkdownProps) {
               return <span className="file-link-unavailable">{children}</span>;
             }
             return (
-              <a href={href} target="_blank" rel="noreferrer noopener" {...props}>
+              <a
+                href={href}
+                onClick={(event) => {
+                  event.preventDefault();
+                  void openExternal(href ?? '');
+                }}
+                {...props}
+              >
                 {children}
               </a>
             );
@@ -135,7 +143,13 @@ export default function Markdown({ content, onOpenFile }: MarkdownProps) {
             const target = typeof src === 'string' ? fileTargetFromHref(src) : null;
             const source = target ? target.url : src;
             return (
-              <a href={source} target="_blank" rel="noreferrer">
+              <a
+                href={source}
+                onClick={(event) => {
+                  event.preventDefault();
+                  void openExternal(source ?? '');
+                }}
+              >
                 <img src={source} alt={alt ?? ''} loading="lazy" />
               </a>
             );

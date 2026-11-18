@@ -36,6 +36,16 @@ class CuratedModel:
     providers: dict[str, ProviderSpec]
 
 
+@dataclass(frozen=True)
+class ResolvedModel:
+    """A model fully resolved to a provider, model id, and API key."""
+
+    name: str          # display name
+    model_id: str      # actual model id sent to the API
+    provider: ProviderSpec
+    key: str
+
+
 NEMOTRON = CuratedModel(
     id="nemotron-3.5-super-vl",
     name="Nemotron 3.5 VL Super",
@@ -69,11 +79,11 @@ MODELS: list[CuratedModel] = [NEMOTRON]
 DEFAULT_MODEL = NEMOTRON.id
 
 
-def get_model(model_id: str) -> CuratedModel:
+def get_model(model_id: str) -> CuratedModel | None:
     for model in MODELS:
         if model.id == model_id:
             return model
-    return NEMOTRON
+    return None
 
 
 async def api_keys(db: Database) -> dict[str, str]:
@@ -90,32 +100,96 @@ async def preferred_provider(db: Database) -> str:
 
 
 async def resolve_provider(
-    db: Database, requested: str | None = None
-) -> tuple[CuratedModel, ProviderSpec, str]:
+    db: Database,
+    model_id: str | None = None,
+    requested: str | None = None,
+) -> ResolvedModel:
+    """Resolve a model + provider choice to a concrete ProviderSpec and API key.
+
+    ``model_id`` is the model the user selected (curated model id or a custom
+    model_id such as ``inclusionai/ling-3.2-flash:free``). ``requested`` is the
+    provider preference ("nim", "openrouter", "auto", or a chat's stored provider).
+
+    Custom models always route through OpenRouter. Curated models (Nemotron) can
+    route through NIM or OpenRouter depending on the preference.
+    """
     keys = await api_keys(db)
-    preference = (requested or await preferred_provider(db)).lower()
+    settings_pref = await preferred_provider(db)
+
+    # A chat's explicit provider ("nim"/"openrouter") takes precedence.
+    # "auto" defers to the settings-level preference.
+    preference = requested if requested and requested != "auto" else settings_pref
+    preference = (preference or "").strip().lower()
     if preference not in {"auto", "nim", "openrouter"}:
         preference = "auto"
 
-    order = ["nim", "openrouter"] if preference == "auto" else [preference]
-    if preference != "auto":
-        order += [p for p in ("nim", "openrouter") if p != preference]
+    model = get_model(model_id) if model_id else None
+
+    # Custom models (not in the curated registry) always go through OpenRouter.
+    if model is None:
+        if not model_id:
+            model_id = DEFAULT_MODEL
+            model = NEMOTRON
+        else:
+            # Custom model: route via OpenRouter with the user's model id.
+            key = keys.get("openrouter", "")
+            if not key:
+                raise ProviderError(
+                    "Custom models require an OpenRouter API key. Add one in "
+                    "Settings → Provider."
+                )
+            spec = ProviderSpec(
+                id="openrouter",
+                label="OpenRouter",
+                base_url=(
+                    CONFIG.openrouter_base_url.rstrip("/")
+                    if CONFIG.openrouter_base_url.strip()
+                    else "https://openrouter.ai/api/v1"
+                ),
+                model_id=model_id,
+                key_name="openrouter_api_key",
+                docs="https://openrouter.ai/models",
+            )
+            return ResolvedModel(
+                name=model_id,
+                model_id=model_id,
+                provider=spec,
+                key=key,
+            )
+
+    # Curated model (Nemotron): choose provider based on preference.
+    if preference == "auto":
+        order = ["nim", "openrouter"]
+    else:
+        order = [preference]
 
     for provider_id in order:
         key = keys.get(provider_id, "")
         if not key:
             continue
-        spec = NEMOTRON.providers[provider_id]
+        spec = model.providers[provider_id]
         override = (
             CONFIG.nim_base_url if provider_id == "nim" else CONFIG.openrouter_base_url
         ).strip()
         if override:
             spec = replace(spec, base_url=override.rstrip("/"))
-        return NEMOTRON, spec, key
+        return ResolvedModel(
+            name=model.name,
+            model_id=spec.model_id,
+            provider=spec,
+            key=key,
+        )
 
+    # No key available for any provider in the order.
+    if model is NEMOTRON:
+        raise ProviderError(
+            "No API key configured. Open Settings and add an NVIDIA NIM or "
+            "OpenRouter key. NIM keys are free at build.nvidia.com; OpenRouter "
+            "has a free Nemotron endpoint."
+        )
     raise ProviderError(
-        "No API key configured. Open Settings and add an NVIDIA NIM or OpenRouter key. "
-        "NIM keys are free at build.nvidia.com; OpenRouter has a free Nemotron endpoint."
+        f"No API key configured for {provider.label}. Add one in "
+        "Settings → Provider."
     )
 
 
@@ -144,9 +218,10 @@ class StreamClient:
         temperature: float | None = None,
         max_tokens: int | None = None,
         tool_choice: str | None = "auto",
+        model_id: str | None = None,
     ) -> AsyncIterator[dict]:
         payload: dict[str, Any] = {
-            "model": self.provider.model_id,
+            "model": model_id or self.provider.model_id,
             "messages": messages,
             "stream": True,
             "temperature": CONFIG.temperature if temperature is None else temperature,

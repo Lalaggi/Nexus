@@ -91,7 +91,7 @@ export default function Sidebar({
             </button>
             <button
               type="button"
-              className="icon-btn"
+              className="icon-btn collapse-btn"
               onClick={onCollapse}
               aria-label="Collapse sidebar"
               title="Collapse sidebar"

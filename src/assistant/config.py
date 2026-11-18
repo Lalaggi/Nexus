@@ -19,7 +19,7 @@ class Config(BaseSettings):
         extra="ignore",
     )
 
-    host: str = "127.0.0.1"
+    host: str = "0.0.0.0"
     port: int = 8848
     data_dir: Path = PROJECT_ROOT / "data"
     home: Path | None = None
@@ -42,6 +42,10 @@ class Config(BaseSettings):
     assistant_name: str = "Assistant"
     password: str = ""
     cookie_secure: bool = False
+    # Comma-separated origins allowed to call the API from a packaged app.
+    # The Capacitor Android WebView loads file:// assets (Origin: null) and
+    # talks to a user-supplied server over HTTP(S).
+    cors_origins: str = "*"
     provider: str = "auto"
     temperature: float = 0.6
     max_tokens: int = 8192
@@ -49,6 +53,11 @@ class Config(BaseSettings):
 
     openrouter_api_key: str = ""
     nvidia_api_key: str = ""
+
+    # Sensitive database fields are encrypted at rest. Set a Fernet key or a
+    # passphrase here, or leave empty to use the key file below.
+    encryption_key: str = ""
+    secret_key_file: Path | None = None
 
     # Optional endpoint overrides. Useful for proxies, self-hosted NIM, or a
     # local OpenAI-compatible test server; empty means use the provider default.
@@ -85,6 +94,15 @@ class Config(BaseSettings):
         return self.data_dir / "assistant.db"
 
     @property
+    def secret_key_path(self) -> Path:
+        if self.secret_key_file is not None:
+            return self.secret_key_file.expanduser().resolve()
+        config_home = Path(
+            os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))
+        ).expanduser()
+        return config_home / "assistant" / "secret.key"
+
+    @property
     def web_dist(self) -> Path:
         return PROJECT_ROOT / "web" / "dist"
 
@@ -99,6 +117,10 @@ class Config(BaseSettings):
     @property
     def openrouter_key(self) -> str:
         return (os.getenv("OPENROUTER_API_KEY") or self.openrouter_api_key).strip()
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
 
 def _prepare_dirs(home: Path) -> bool:

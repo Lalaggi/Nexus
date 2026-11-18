@@ -249,6 +249,7 @@ async def run_turn(
     assistant_message_id: str,
     emit: Emit,
     state: RunState,
+    model_id: str | None = None,
 ) -> None:
     all_content: list[str] = []
     all_reasoning: list[str] = []
@@ -262,7 +263,7 @@ async def run_turn(
         chat = await db.get_chat(chat_id)
         if chat is None:
             raise ProviderError("This conversation no longer exists.")
-        model, provider, key = await resolve_provider(db, chat.get("provider"))
+        resolved = await resolve_provider(db, model_id or chat.get("model"), chat.get("provider"))
         history = await build_context(db, chat_id, {assistant_message_id})
         user_notes = await db.list_notes()
         custom_instructions = await db.get_setting("custom_instructions", "")
@@ -271,25 +272,24 @@ async def run_turn(
             *history,
         ]
         tools = schemas()
-        client = StreamClient(provider, key)
+        client = StreamClient(resolved.provider, resolved.key)
         ctx = ToolContext(chat_id=chat_id, db=db, emit=emit)
 
         await emit(
             {
                 "type": "meta",
                 "message_id": assistant_message_id,
-                "provider": provider.id,
-                "provider_label": provider.label,
-                "model": model.name,
+                "provider": resolved.provider.id,
+                "provider_label": resolved.provider.label,
+                "model": resolved.name,
+                "model_id": resolved.model_id,
             }
         )
 
         def step_add_text(text: str) -> None:
             if not text:
                 return
-            if all_content and not all_content[-1].endswith("\n\n"):
-                all_content[-1] += "\n\n" + text
-            elif all_content:
+            if all_content:
                 all_content[-1] += text
             else:
                 all_content.append(text)
@@ -303,7 +303,7 @@ async def run_turn(
             step_reasoning: list[str] = []
             calls: dict[int, dict] = {}
 
-            async for chunk in client.stream(messages, tools):
+            async for chunk in client.stream(messages, tools, model_id=resolved.model_id):
                 if state.cancel.is_set():
                     cancelled = True
                     break

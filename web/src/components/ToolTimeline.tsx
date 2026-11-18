@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import type { ToolEvent } from '../types';
 import { fileTargetFromHref, formatBytes, hostOf, type FileTarget } from '../api';
+import { openExternal } from '../server';
 
 type GroupKind = 'goal' | 'tasks' | 'search' | 'fetch' | 'write' | 'read' | 'list' | 'code' | 'other';
 
@@ -298,9 +299,11 @@ function SearchBody({ events }: { events: ToolEvent[] }) {
         <a
           key={result.url}
           href={result.url}
-          target="_blank"
-          rel="noreferrer noopener"
           className="search-result"
+          onClick={(event) => {
+            event.preventDefault();
+            void openExternal(result.url);
+          }}
         >
           <span className="search-domain">{hostOf(result.url)}</span>
           <span className="search-title">{result.title}</span>
@@ -319,7 +322,15 @@ function FetchBody({ events }: { events: ToolEvent[] }) {
         const url = String(event.data?.url ?? event.args?.url ?? '');
         if (!url) return null;
         return (
-          <a key={event.id} className="tool-link" href={url} target="_blank" rel="noreferrer">
+          <a
+            key={event.id}
+            className="tool-link"
+            href={url}
+            onClick={(event) => {
+              event.preventDefault();
+              void openExternal(url);
+            }}
+          >
             <Globe2 size={14} />
             <span>{String(event.data?.title || hostOf(url))}</span>
             <ExternalLink size={12} />
@@ -495,11 +506,10 @@ export default function ToolTimeline({
   onOpenFile?: (file: FileTarget) => void;
 }) {
   const groups = useMemo(() => groupEvents(events), [events]);
+  // Keep the work log collapsed by default, both while the model is working and
+  // after it finishes. The summary already shows live status and activity; the
+  // user can expand it at any time and it stays open until they collapse it.
   const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    setOpen(running);
-  }, [running]);
 
   const taskTitles = useMemo(() => {
     const titles = new Map<string, string>();
