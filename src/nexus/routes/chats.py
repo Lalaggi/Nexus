@@ -51,15 +51,6 @@ class MessagePatch(BaseModel):
     content: str | None = None
 
 
-def _title_from(content: str, attachments: list[dict]) -> str:
-    line = next((line.strip() for line in content.splitlines() if line.strip()), "")
-    if not line and attachments:
-        line = f"Analyze {attachments[0]['name']}"
-    if not line:
-        return "New chat"
-    return line[:70] + ("…" if len(line) > 70 else "")
-
-
 @router.get("/chats")
 async def list_chats(request: Request) -> list[dict]:
     return await db_of(request).list_chats()
@@ -251,9 +242,6 @@ async def send_message(request: Request, chat_id: str, body: SendMessage):
     user_message = await db.add_message(
         chat_id, "user", body.content.strip(), attachments=attachments
     )
-    if chat.get("title") in {"", "New chat"}:
-        await db.update_chat(chat_id, title=_title_from(body.content, attachments))
-        chat = await db.get_chat(chat_id)
     nexus = await db.add_message(chat_id, "assistant", "")
     state = start_run(chat_id)
     return _sse_stream(
@@ -313,11 +301,20 @@ async def patch_message(message_id: str, body: MessagePatch, request: Request):
     message = await db.get_message(message_id)
     if message is None:
         raise HTTPException(404, "Message not found")
-    if message["role"] != "assistant":
-        raise HTTPException(400, "Only nexus messages can be edited.")
     if body.content is None:
         raise HTTPException(400, "Content is required.")
     await db.set_message_content(message_id, body.content.strip())
+    await db.touch_chat(message["chat_id"])
+    return {"ok": True, "message_id": message_id}
+
+
+@router.delete("/messages/{message_id}/after")
+async def delete_messages_after(message_id: str, request: Request):
+    db = db_of(request)
+    message = await db.get_message(message_id)
+    if message is None:
+        raise HTTPException(404, "Message not found")
+    await db.delete_messages_after(message["chat_id"], message["seq"])
     await db.touch_chat(message["chat_id"])
     return {"ok": True, "message_id": message_id}
 

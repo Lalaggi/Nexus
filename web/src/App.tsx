@@ -76,6 +76,7 @@ export default function App() {
   const [goal, setGoal] = useState('');
   const [draft, setDraft] = useState('');
   const [draftAttachments, setDraftAttachments] = useState<Attachment[]>([]);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -199,6 +200,7 @@ export default function App() {
     setGoal('');
     setDraft('');
     setDraftAttachments([]);
+    setEditingMessageId(null);
     setSelectedModelId(settings?.custom_model_id || settings?.model.id || '');
     setPanel(null);
     setPreview(null);
@@ -229,6 +231,7 @@ export default function App() {
         setSelectedModelId(data.chat.model || settings?.custom_model_id || settings?.model.id || '');
         setPreview(null);
         setFiles([]);
+        setEditingMessageId(null);
         window.history.pushState({}, '', `?c=${data.chat.id}`);
         if (window.innerWidth < 900) setSidebarOpen(false);
       } catch (error) {
@@ -530,6 +533,30 @@ export default function App() {
     const content = draft.trim();
     if ((!content && draftAttachments.length === 0) || streaming || uploading) return;
 
+    if (editingMessageId && activeChat) {
+      const editId = editingMessageId;
+      const editAttachments = draftAttachments;
+      try {
+        await api(`/messages/${editId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ content }),
+        });
+        await api(`/messages/${editId}/after`, { method: 'DELETE' });
+      } catch {
+        notify('Failed to save edited message.');
+        return;
+      }
+      setEditingMessageId(null);
+      setDraft('');
+      setDraftAttachments([]);
+      startStream(activeChat.id, `/api/chats/${activeChat.id}/messages`, 'POST', {
+        content,
+        attachment_ids: editAttachments.map((attachment) => attachment.id),
+        model: selectedModelId,
+      }, editId);
+      return;
+    }
+
     let chat = activeChat;
     if (!chat) {
       try {
@@ -815,14 +842,24 @@ export default function App() {
               messages={messages}
               streaming={streaming}
               onRegenerate={regenerate}
-              onEdit={(message) => {
+              onEdit={async (message) => {
                 setDraft(message.content || '');
                 setDraftAttachments(message.attachments || []);
-                setMessages((previous) => {
-                  const idx = previous.findIndex((m) => m.id === message.id);
-                  if (idx === -1) return previous;
-                  return previous.slice(0, idx);
-                });
+                setEditingMessageId(message.id);
+                setMessages((previous) =>
+                  previous.map((m) =>
+                    m.id === message.id ? { ...m, content: message.content || '' } : m,
+                  ),
+                );
+                try {
+                  await api(`/messages/${message.id}`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({ content: message.content || '' }),
+                  });
+                  await api(`/messages/${message.id}/after`, { method: 'DELETE' });
+                } catch {
+                  /* best-effort sync; UI is already updated optimistically */
+                }
                 window.setTimeout(() => inputRef.current?.focus(), 50);
               }}
               onOpenFile={setPreview}
