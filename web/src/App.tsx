@@ -892,6 +892,12 @@ export default function App() {
                 }
                 onOpenSettings={() => setSettingsOpen(true)}
                 inputRef={inputRef}
+                editing={editingMessageId !== null}
+                onCancelEdit={() => {
+                  setEditingMessageId(null);
+                  setDraft('');
+                  setDraftAttachments([]);
+                }}
               />
             </div>
           </>

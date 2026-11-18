@@ -29,6 +29,8 @@ export default function Composer({
   onRemoveAttachment,
   onOpenSettings,
   inputRef,
+  editing,
+  onCancelEdit,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -46,6 +48,8 @@ export default function Composer({
   onRemoveAttachment: (id: string) => void;
   onOpenSettings: () => void;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
+  editing?: boolean;
+  onCancelEdit?: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -110,6 +114,15 @@ export default function Composer({
               );
             })}
             {uploading && <span className="pending-file uploading">Uploading…</span>}
+          </div>
+        )}
+
+        {editing && (
+          <div className="composer-edit-banner">
+            <span>Editing a message</span>
+            <button type="button" onClick={onCancelEdit} aria-label="Cancel editing" title="Cancel editing">
+              <X size={16} />
+            </button>
           </div>
         )}
 
