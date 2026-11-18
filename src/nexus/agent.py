@@ -461,11 +461,14 @@ async def run_turn(
             if chat and chat.get("title") in {"", "New chat"}:
                 messages = await db.list_messages(chat_id)
                 assistant_count = sum(1 for m in messages if m["role"] == "assistant")
+                print(f"[title] chat title={chat.get('title')!r} assistant_count={assistant_count}")
                 if assistant_count == 1:
                     user_content = _extract_user_text(history)
+                    print(f"[title] user_content={user_content[:100]!r}")
                     new_title = await _generate_title(
                         client, model, user_content, content
                     )
+                    print(f"[title] generated={new_title!r}")
                     if new_title and new_title != "New chat":
                         await db.update_chat(chat_id, title=new_title)
                         await emit(
@@ -475,8 +478,8 @@ async def run_turn(
                                 "title": new_title,
                             }
                         )
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"[title] error: {exc}")
 
         try:
             await emit(
