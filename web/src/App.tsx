@@ -4,6 +4,7 @@ import {
   ListTodo,
   Loader2,
   Menu,
+  Plus,
   Settings as SettingsIcon,
   Sparkles,
   X,
@@ -799,11 +800,11 @@ export default function App() {
             <button
               type="button"
               className="icon-btn"
-              onClick={() => setSettingsOpen(true)}
-              aria-label="Settings"
-              title="Settings"
+              onClick={() => void resetToNew()}
+              aria-label="New chat"
+              title="New chat"
             >
-              <SettingsIcon size={18} />
+              <Plus size={18} />
             </button>
           </div>
         </header>
