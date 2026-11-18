@@ -1,4 +1,4 @@
-export type Role = 'user' | 'nexus';
+export type Role = 'user' | 'assistant';
 
 export interface Chat {
   id: string;

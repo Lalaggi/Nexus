@@ -177,6 +177,11 @@ export default function App() {
     }
   }, []);
 
+  const toggleSidebar = useCallback(() => {
+    if (!sidebarOpen) void refreshChats();
+    setSidebarOpen((value) => !value);
+  }, [refreshChats, sidebarOpen]);
+
   const resetToNew = useCallback(() => {
     if (abortRef.current) {
       abortRef.current.abort();
@@ -303,7 +308,7 @@ export default function App() {
 
     const placeholder: Message = {
       id: localAssistantId,
-      role: 'nexus',
+      role: 'assistant',
       content: '',
       reasoning: '',
       tool_events: [],
@@ -754,7 +759,7 @@ export default function App() {
             <button
               type="button"
               className="icon-btn menu-btn"
-              onClick={() => setSidebarOpen((value) => !value)}
+              onClick={toggleSidebar}
               aria-label="Toggle sidebar"
             >
               <Menu size={19} />

@@ -388,7 +388,7 @@ class Database:
 
     async def last_assistant(self, chat_id: str) -> dict | None:
         row = await self._fetchone(
-            "SELECT * FROM messages WHERE chat_id = ? AND role = 'nexus' ORDER BY seq DESC LIMIT 1",
+            "SELECT * FROM messages WHERE chat_id = ? AND role = 'assistant' ORDER BY seq DESC LIMIT 1",
             (chat_id,),
         )
         if row is not None:
