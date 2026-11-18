@@ -117,7 +117,7 @@ export default function Composer({
           ref={inputRef}
           value={value}
           rows={1}
-          placeholder="Message nexus"
+          placeholder="Message Nexus"
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -131,7 +131,7 @@ export default function Composer({
               onUpload(event.clipboardData.files);
             }
           }}
-          aria-label="Message nexus"
+          aria-label="Message Nexus"
         />
 
         <div className="composer-bar">
