@@ -43,7 +43,7 @@ import SettingsDialog, { type SettingsPatch, type TestResult } from './component
 import Login from './components/Login';
 import Connect from './components/Connect';
 import { Brandmark } from './components/Brandmark';
-import { useSwipe } from './useGesture';
+import { useDrag } from './useGesture';
 
 type Boot = 'loading' | 'login' | 'ready' | 'error';
 
@@ -109,6 +109,7 @@ export default function App() {
   const toastTimer = useRef<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const appRef = useRef<HTMLDivElement>(null);
+  const sidebarRef = useRef<HTMLDivElement>(null);
   const loadChatRef = useRef<(id: string) => Promise<void>>(async () => {});
 
   useEffect(() => {
@@ -174,20 +175,41 @@ export default function App() {
     return () => mq.removeEventListener('change', handle);
   }, []);
 
-  // Swipe right from anywhere opens the chats sidebar; swipe left from anywhere closes it.
-  // Passive listeners, so scrolling and taps are never blocked. Vertical scrolls are ignored
-  // because only the dominant horizontal direction is reported.
-  const handleSwipe = useCallback(
-    (direction: 'left' | 'right' | 'up' | 'down', distance: number, startX: number) => {
-      if (direction === 'right') {
-        setSidebarOpen(true);
-      } else if (direction === 'left') {
-        setSidebarOpen(false);
+  // Drag-follow sidebar gesture: the sidebar translates linearly with your finger,
+  // then snaps open or closed on lift. Vertical scrolling is never intercepted.
+  const [dragging, setDragging] = useState(false);
+  const dragStartTX = useRef(0);
+  const dragTX = useRef(0); // running translateX during the drag
+  const CLOSED_OFFSET = -(296 + 2); // matches .sidebar-closed transform (sidebar-width + 2px border)
+
+  useDrag({
+    element: sidebarRef.current,
+    onDragStart: () => {
+      setDragging(true);
+      dragStartTX.current = sidebarOpen ? 0 : CLOSED_OFFSET;
+      dragTX.current = dragStartTX.current;
+    },
+    onDrag: (deltaX) => {
+      let nextTX = dragStartTX.current + deltaX;
+      nextTX = Math.min(0, Math.max(CLOSED_OFFSET, nextTX));
+      dragTX.current = nextTX;
+      if (sidebarRef.current) {
+        sidebarRef.current.style.transition = 'none';
+        sidebarRef.current.style.transform = `translateX(${nextTX}px)`;
       }
     },
-    [],
-  );
-  useSwipe({ element: appRef.current, threshold: 44, onSwipe: handleSwipe });
+    onDragEnd: (_deltaX, _deltaY, velocityX) => {
+      const shouldOpen = dragTX.current > CLOSED_OFFSET / 2 || velocityX > 0.25;
+      setSidebarOpen(shouldOpen);
+      setDragging(false);
+      dragStartTX.current = 0;
+      dragTX.current = 0;
+      if (sidebarRef.current) {
+        sidebarRef.current.style.transition = '';
+        sidebarRef.current.style.transform = '';
+      }
+    },
+  });
 
   useEffect(() => {
     if (boot === 'ready') window.setTimeout(() => inputRef.current?.focus(), 80);
@@ -819,6 +841,7 @@ export default function App() {
       ref={appRef}
     >
       <Sidebar
+        ref={sidebarRef}
         chats={chats}
         activeId={activeChat?.id ?? null}
         settings={settings}

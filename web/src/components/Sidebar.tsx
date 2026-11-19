@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { forwardRef, type ForwardedRef, useMemo, useRef, useState } from 'react';
 import { MessageSquare, PanelLeftClose, Plus, RefreshCw, Search, Settings, Trash2, X } from 'lucide-react';
 import type { Chat, SettingsSnapshot } from '../types';
 import { relativeTime } from '../api';
@@ -14,17 +14,7 @@ function initials(name: string): string {
   );
 }
 
-export default function Sidebar({
-  chats,
-  activeId,
-  settings,
-  onSelect,
-  onNew,
-  onDelete,
-  onRefresh,
-  onSettings,
-  onCollapse,
-}: {
+export default forwardRef<HTMLDivElement, {
   chats: Chat[];
   activeId: string | null;
   settings: SettingsSnapshot | null;
@@ -34,7 +24,30 @@ export default function Sidebar({
   onRefresh?: () => void;
   onSettings: () => void;
   onCollapse: () => void;
-}) {
+}>(function Sidebar(
+  {
+    chats,
+    activeId,
+    settings,
+    onSelect,
+    onNew,
+    onDelete,
+    onRefresh,
+    onSettings,
+    onCollapse,
+  }: {
+    chats: Chat[];
+    activeId: string | null;
+    settings: SettingsSnapshot | null;
+    onSelect: (id: string) => void;
+    onNew: () => void;
+    onDelete: (id: string) => void;
+    onRefresh?: () => void;
+    onSettings: () => void;
+    onCollapse: () => void;
+  },
+  ref: ForwardedRef<HTMLDivElement>
+) {
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -52,7 +65,7 @@ export default function Sidebar({
   const provider = settings?.provider === 'nim' ? 'NIM' : settings?.provider === 'openrouter' ? 'OpenRouter' : 'Auto';
 
   return (
-    <aside className="sidebar">
+    <aside ref={ref} className="sidebar">
       <div className="sidebar-top">
         {searching ? (
           <div className="sidebar-search">
@@ -174,4 +187,4 @@ export default function Sidebar({
       </div>
     </aside>
   );
-}
+});

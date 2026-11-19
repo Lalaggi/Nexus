@@ -277,11 +277,12 @@ a {
   padding: 12px 12px 10px;
   background: var(--surface-container-low);
   border-right: 1px solid var(--outline-variant);
-  transition: margin-left var(--dur-med) var(--ease-emphasized);
+  transform: translateX(0);
+  transition: transform var(--dur-med) var(--ease-emphasized);
   z-index: 30;
 }
 .sidebar-closed .sidebar {
-  margin-left: calc(-1 * var(--sidebar-width) - 2px);
+  transform: translateX(calc(-1 * var(--sidebar-width) - 2px));
 }
 .sidebar-top {
   height: 40px;

@@ -1,75 +1,107 @@
 import { useCallback, useEffect, useRef } from 'react';
 
-export type SwipeDirection = 'left' | 'right' | 'up' | 'down';
-
-interface UseSwipeOptions {
+interface UseDragOptions {
   /** Element to attach touch listeners to. Defaults to the document element. */
   element?: HTMLElement | null;
-  /** Called when a deliberate swipe is detected. */
-  onSwipe?: (direction: SwipeDirection, distance: number, startX: number) => void;
-  /** Minimum travel in px before a swipe is reported. */
+  /** Minimum travel in px before a drag is committed. */
   threshold?: number;
-  /** Only report swipes that start within this many px of the given edge. */
-  edge?: 'left' | 'right' | null;
+  /** How much horizontal movement must dominate vertical before claiming the gesture. */
+  dominance?: number;
+  /** Called once the gesture is committed to a horizontal drag. */
+  onDragStart?: () => void;
+  /** Called continuously during the drag with the delta from touch start. */
+  onDrag?: (deltaX: number, deltaY: number) => void;
+  /** Called on lift with the final delta and pixels-per-ms horizontal velocity. */
+  onDragEnd?: (deltaX: number, deltaY: number, velocityX: number) => void;
 }
 
 /**
- * Minimal touch swipe detector.
+ * Finger-following drag gesture.
  *
- * Listeners are passive, so native scrolling and taps keep working — we only
- * observe touches and report on touchEnd. A swipe is reported when the touch
- * travels at least `threshold` px in one dominant direction.
+ * Unlike the previous swipe detector (which only fired on lift), this reports the
+ * live delta while the finger moves so UI can track the finger. It only claims the
+ * gesture once movement is clearly horizontal and past a threshold, so ordinary
+ * vertical scrolling is never interrupted.
  *
- * NOTE (Android back-gesture zones): the system back gesture also starts from
- * the screen edges. The edge band is kept narrow and requires a deliberate
- * swipe to reduce accidental conflicts; a later refinement can gate on velocity
- * or hook into Capacitor gesture exclusions.
+ * Listeners are non-passive on touchmove so we can preventDefault once a horizontal
+ * drag is locked in (stopping the page from scrolling while the sidebar follows the
+ * finger).
  */
-export function useSwipe({
+export function useDrag({
   element,
-  onSwipe,
-  threshold = 44,
-  edge,
-}: UseSwipeOptions = {}) {
-  const start = useRef<{ x: number; y: number } | null>(null);
-  const direction = useRef<SwipeDirection | null>(null);
+  threshold = 15,
+  dominance = 1.2,
+  onDragStart,
+  onDrag,
+  onDragEnd,
+}: UseDragOptions = {}) {
+  const start = useRef<{ x: number; y: number; time: number } | null>(null);
+  const last = useRef<{ x: number; y: number; time: number } | null>(null);
+  const dragging = useRef(false);
 
   const onTouchStart = useCallback((event: TouchEvent) => {
     const touch = event.touches[0];
-    start.current = { x: touch.clientX, y: touch.clientY };
-    direction.current = null;
+    const now = Date.now();
+    start.current = { x: touch.clientX, y: touch.clientY, time: now };
+    last.current = { ...start.current };
+    dragging.current = false;
   }, []);
 
-  const onTouchMove = useCallback((event: TouchEvent) => {
-    if (!start.current) return;
-    const touch = event.touches[0];
-    const dx = touch.clientX - start.current.x;
-    const dy = touch.clientY - start.current.y;
-    direction.current =
-      Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
-  }, []);
+  const onTouchMove = useCallback(
+    (event: TouchEvent) => {
+      if (!start.current) return;
+      const touch = event.touches[0];
+      const now = Date.now();
+      const dx = touch.clientX - start.current.x;
+      const dy = touch.clientY - start.current.y;
+
+      if (!dragging.current) {
+        const horizontal = Math.abs(dx) > threshold;
+        const dominates = Math.abs(dx) > Math.abs(dy) * dominance;
+        if (horizontal && dominates) {
+          dragging.current = true;
+          onDragStart?.();
+          event.preventDefault();
+        } else if (Math.abs(dy) > threshold) {
+          // Clearly a vertical scroll — abandon the gesture.
+          start.current = null;
+          dragging.current = false;
+        }
+        return;
+      }
+
+      // Locked into a horizontal drag: follow the finger and suppress scroll.
+      event.preventDefault();
+      onDrag?.(dx, dy);
+      last.current = { x: touch.clientX, y: touch.clientY, time: now };
+    },
+    [threshold, dominance, onDragStart, onDrag]
+  );
 
   const onTouchEnd = useCallback(
     (event: TouchEvent) => {
-      if (!start.current || !direction.current || !onSwipe) return;
-      const touch = event.changedTouches[0];
-      const dx = touch.clientX - start.current.x;
-      const dy = touch.clientY - start.current.y;
-      const distance =
-        direction.current === 'left' || direction.current === 'right' ? Math.abs(dx) : Math.abs(dy);
-      if (distance < threshold) return;
-      if (edge === 'left' && start.current.x > 32) return;
-      if (edge === 'right' && start.current.x < window.innerWidth - 32) return;
-      onSwipe(direction.current, distance, start.current.x);
+      if (!start.current) return;
+      if (dragging.current && onDragEnd) {
+        const touch = event.changedTouches[0];
+        const now = Date.now();
+        const dx = touch.clientX - start.current.x;
+        const dy = touch.clientY - start.current.y;
+        const dt = now - start.current.time;
+        const velocityX = dt > 0 ? dx / dt : 0;
+        onDragEnd(dx, dy, velocityX);
+      }
+      start.current = null;
+      last.current = null;
+      dragging.current = false;
     },
-    [onSwipe, threshold, edge],
+    [onDragEnd]
   );
 
   useEffect(() => {
     const el = element ?? document.documentElement;
-    el.addEventListener('touchstart', onTouchStart, { passive: true });
-    el.addEventListener('touchmove', onTouchMove, { passive: true });
-    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    el.addEventListener('touchstart', onTouchStart, { passive: false });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: false });
     return () => {
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
