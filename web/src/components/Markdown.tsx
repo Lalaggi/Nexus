@@ -1,9 +1,10 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { Check, Copy } from 'lucide-react';
 import { fileTargetFromHref, type FileTarget } from '../api';
+import { copyText } from '../clipboard';
 import { openExternal } from '../server';
 
 function hastText(node: any): string {
@@ -38,24 +39,32 @@ function safeUrlTransform(value: string): string {
 }
 
 function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
+  const [state, setState] = useState<'idle' | 'copied' | 'error'>('idle');
+  const timer = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (timer.current) window.clearTimeout(timer.current);
+    },
+    [],
+  );
+
+  const copy = async () => {
+    const ok = await copyText(text);
+    setState(ok ? 'copied' : 'error');
+    if (timer.current) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setState('idle'), 1600);
+  };
+
   return (
     <button
       type="button"
       className="code-copy"
-      aria-label="Copy code"
-      onClick={async () => {
-        try {
-          await navigator.clipboard.writeText(text);
-          setCopied(true);
-          window.setTimeout(() => setCopied(false), 1600);
-        } catch {
-          /* clipboard can be blocked on insecure origins */
-        }
-      }}
+      aria-label={state === 'error' ? 'Copy failed' : 'Copy code'}
+      onClick={copy}
     >
-      {copied ? <Check size={14} /> : <Copy size={14} />}
-      <span>{copied ? 'Copied' : 'Copy'}</span>
+      {state === 'copied' ? <Check size={14} /> : <Copy size={14} />}
+      <span>{state === 'copied' ? 'Copied' : state === 'error' ? 'Copy failed' : 'Copy'}</span>
     </button>
   );
 }

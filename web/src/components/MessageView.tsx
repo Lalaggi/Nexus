@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Check,
   Copy,
@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import type { Attachment, Message } from '../types';
 import { attachmentKind, formatBytes, hostOf, type FileTarget } from '../api';
+import { copyText } from '../clipboard';
 import Markdown from './Markdown';
 import ToolTimeline, { sourceList } from './ToolTimeline';
 import { Brandmark } from './Brandmark';
@@ -90,20 +91,28 @@ export default function MessageView({
   onEdit?: (message: Message) => void;
   onOpenFile?: (file: FileTarget) => void;
 }) {
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle');
+  const copyTimer = useRef<number | null>(null);
   const isUser = message.role === 'user';
   const sources = sourceList(message.tool_events || []);
   const hasVisibleContent = Boolean(message.content?.trim());
 
+  useEffect(
+    () => () => {
+      if (copyTimer.current) window.clearTimeout(copyTimer.current);
+    },
+    [],
+  );
+
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(message.content);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* ignore */
-    }
+    const ok = await copyText(message.content);
+    setCopyState(ok ? 'copied' : 'error');
+    if (copyTimer.current) window.clearTimeout(copyTimer.current);
+    copyTimer.current = window.setTimeout(() => setCopyState('idle'), 1500);
   };
+
+  const copyLabel =
+    copyState === 'copied' ? 'Copied' : copyState === 'error' ? 'Copy failed' : 'Copy';
 
   const handleEdit = () => {
     onEdit?.(message);
@@ -126,9 +135,10 @@ export default function MessageView({
               type="button"
               onClick={copy}
               title="Copy message"
+              aria-label={copyState === 'error' ? 'Copy failed' : 'Copy message'}
             >
-              {copied ? <Check size={14} /> : <Copy size={14} />}
-              <span>{copied ? 'Copied' : 'Copy'}</span>
+              {copyState === 'copied' ? <Check size={14} /> : <Copy size={14} />}
+              <span>{copyLabel}</span>
             </button>
             {isLastUser && onEdit && (
               <button
@@ -213,9 +223,10 @@ export default function MessageView({
               type="button"
               onClick={copy}
               title="Copy response"
+              aria-label={copyState === 'error' ? 'Copy failed' : 'Copy response'}
             >
-              {copied ? <Check size={14} /> : <Copy size={14} />}
-              <span>{copied ? 'Copied' : 'Copy'}</span>
+              {copyState === 'copied' ? <Check size={14} /> : <Copy size={14} />}
+              <span>{copyLabel}</span>
             </button>
             {isLast && onRegenerate && (
               <button
