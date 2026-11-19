@@ -208,6 +208,9 @@ function FileLinks({
     <div className="tool-files">
       {files.map((file) => {
         const target = fileTargetFromHref(file.url);
+        // A failed tool used to fabricate {name: "file", path: "", url: ""},
+        // which rendered as a bogus extra chip. Ignore empty entries.
+        if (!file.path && !file.url) return null;
         return (
           <button
             key={file.path || file.name}
@@ -439,8 +442,20 @@ function GroupBody({
     case 'write':
       return <WriteBody events={group.events} onOpenFile={onOpenFile} />;
     case 'read':
-    case 'list':
       return <FileLinks files={group.events.flatMap((event) => event.data?.files ?? [])} onOpenFile={onOpenFile} />;
+    case 'list': {
+      const files = group.events.flatMap((event) => event.data?.files ?? []);
+      const listing = group.events
+        .map((event) => event.data?.content ?? '')
+        .filter(Boolean)
+        .join('\n\n');
+      return (
+        <>
+          <FileLinks files={files} onOpenFile={onOpenFile} />
+          {!files.length && listing && <pre className="tool-pre">{listing}</pre>}
+        </>
+      );
+    }
     case 'code':
       return <CodeBody events={group.events} onOpenFile={onOpenFile} />;
     default:

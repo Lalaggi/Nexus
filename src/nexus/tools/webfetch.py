@@ -33,27 +33,79 @@ PARAMETERS = {
 }
 
 
-async def _assert_public(url: str) -> None:
+def _resolve_public(host: str, port: int) -> str:
+    """Resolve a hostname once and return a single validated public address.
+
+    Resolving here and then handing the *hostname* to the HTTP client would let
+    a hostile DNS server answer with a public address for this check and a
+    private one when the client resolves again (DNS rebinding). The caller
+    therefore connects to the address returned here, pinning the connection.
+    """
+    try:
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except OSError as exc:
+        raise ValueError("Could not resolve that host.") from exc
+    addresses: list[str] = []
+    for info in infos:
+        address = str(info[4][0]).split("%")[0]
+        try:
+            ip = ipaddress.ip_address(address)
+        except ValueError as exc:
+            raise ValueError("Could not resolve that host.") from exc
+        if not ip.is_global:
+            raise ValueError("Private, loopback, and link-local addresses are blocked.")
+        if address not in addresses:
+            addresses.append(address)
+    if not addresses:
+        raise ValueError("Could not resolve that host.")
+    # Prefer IPv4: a host with no working IPv6 route would otherwise fail even
+    # though it also has a perfectly good A record.
+    addresses.sort(key=lambda address: ":" in address)
+    return addresses[0]
+
+
+async def _prepare_request(url: str) -> tuple[str, dict[str, str], dict[str, str]]:
+    """Validate a URL, resolve it once, and return a pinned request target.
+
+    Returns ``(pinned_url, headers, extensions)``. The pinned URL contains the
+    validated IP address; the Host header and TLS SNI/certificate hostname stay
+    the original hostname, so virtual hosting and certificate verification are
+    unchanged.
+    """
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise ValueError("Only absolute http(s) URLs are allowed.")
     if parsed.username or parsed.password:
         raise ValueError("URLs with embedded credentials are not allowed.")
     host = parsed.hostname
-    if host.lower() in {"localhost", "localhost.localdomain"} or host.endswith(".local"):
+    if host.lower() in {"localhost", "localhost.localdomain"} or host.lower().endswith(".local"):
         raise ValueError("Local addresses are blocked.")
 
-    def resolve() -> list[str]:
-        infos = socket.getaddrinfo(host, parsed.port or (443 if parsed.scheme == "https" else 80))
-        return [info[4][0] for info in infos]
+    try:
+        host_ascii = host.encode("idna").decode("ascii")
+    except UnicodeError:
+        raise ValueError("Invalid hostname.") from None
+    default_port = 443 if parsed.scheme == "https" else 80
+    try:
+        port = parsed.port or default_port
+    except ValueError:
+        raise ValueError("Invalid port in URL.") from None
 
-    addresses = await asyncio.to_thread(resolve)
-    if not addresses:
-        raise ValueError("Could not resolve that host.")
-    for address in addresses:
-        ip = ipaddress.ip_address(address.split("%")[0])
-        if not ip.is_global:
-            raise ValueError("Private, loopback, and link-local addresses are blocked.")
+    address = await asyncio.to_thread(_resolve_public, host_ascii, port)
+    host_literal = f"[{address}]" if ":" in address else address
+    path = parsed.path or "/"
+    if parsed.query:
+        path += "?" + parsed.query
+    pinned = f"{parsed.scheme}://{host_literal}:{port}{path}"
+
+    host_display = f"[{host_ascii}]" if ":" in host_ascii else host_ascii
+    host_header = host_display if parsed.port is None else f"{host_display}:{parsed.port}"
+    headers = {"Host": host_header}
+    extensions: dict[str, str] = {}
+    if parsed.scheme == "https":
+        # httpcore uses this for both SNI and certificate verification.
+        extensions["sni_hostname"] = host_ascii
+    return pinned, headers, extensions
 
 
 def _fallback_extract(raw: str) -> str:
@@ -111,16 +163,20 @@ async def webfetch(ctx: ToolContext, args: dict) -> ToolResult:
         "Accept-Language": "en-US,en;q=0.8",
     }
     try:
-        await _assert_public(current)
         async with httpx.AsyncClient(timeout=25.0, follow_redirects=False) as client:
             for _ in range(6):
-                async with client.stream("GET", current, headers=headers) as response:
+                pinned, host_headers, extensions = await _prepare_request(current)
+                async with client.stream(
+                    "GET",
+                    pinned,
+                    headers={**headers, **host_headers},
+                    extensions=extensions,
+                ) as response:
                     if response.status_code in {301, 302, 303, 307, 308}:
                         location = response.headers.get("location")
                         if not location:
                             raise ValueError("Redirect without a Location header.")
                         current = urljoin(current, location)
-                        await _assert_public(current)
                         continue
 
                     response.raise_for_status()

@@ -7,6 +7,7 @@ A self-hosted, single-user ChatGPT replacement built around **NVIDIA Nemotron 3.
 - Streaming chat with collapsible reasoning and a grouped activity timeline.
 - Curated model: `Nemotron 3.5 VL Super`, automatically preferring NIM over OpenRouter.
 - Tools: `web_search` (SearXNG), `web_fetch`, `write_file`, `read_file`, `list_files`, `sandbox` (shell commands in a Linux container), plus a visible goal/task list.
+- Native visual reading: `read_file` renders images and PDF pages from uploads, outputs, or the workspace and sends them to the vision model as image parts. PDFs also return their text layer, so one call gives both the full text and visual layout. Text-only models fall back to extracted text.
 - Uploads in `useruploads/`, generated files in `outputs/`, and chat links like `[report.md](file:///mnt/outputs/report.md)` that open in the app.
 - An isolated code sandbox with Python, git, curl, Node, a compiler, and scientific Python packages, but no access to your real home directory, API keys, or LAN.
 - SQLite storage, optional password login, and a single FastAPI process serving the React UI.
@@ -87,6 +88,7 @@ The script is idempotent. It writes an fstab entry for the loop and bind mounts;
 - Only `useruploads/` (read-only), `outputs/`, and the per-chat `.workspaces/` directory are mounted.
 - Outbound internet is allowed; private ranges are dropped by nftables keyed on the sandbox UID.
 - The app user owns the files. The sandbox gets `rX` on uploads and `rwX` on outputs/workspaces through ACLs.
+- `.workspaces/<chat-id>/.python-packages` persists pip installs across calls, so it is writable by the sandbox and on `PYTHONPATH`. The app removes `sitecustomize.py` and `usercustomize.py` before every run and disables the user site, so a file dropped by one turn cannot silently execute in later turns. A maliciously named module could still shadow a future import: the container limits blast radius per call, not confidentiality across turns in the same chat.
 
 ### Development fallback
 
@@ -193,6 +195,8 @@ Rebuild the sandbox image after editing `sandbox/Containerfile`:
 - Chat transcripts, tool output, tasks, upload metadata, notes, and stored API keys are encrypted at rest with Fernet (AES-128-CBC + HMAC). The key is read from `ASSISTANT_ENCRYPTION_KEY` or generated at `~/.config/nexus/secret.key` with owner-only permissions. **Back up that key**: without it, the encrypted database cannot be recovered.
 - `data/`, `*.db`, `.env`, and key files are gitignored. Encrypting the fields means an accidentally committed database still does not expose chat content without the separate key.
 - The sandbox protects your home directory and keys from the model's code, not the app process from you. The app user can still read its own data and the encryption key.
+- `web_fetch` resolves each host once and connects to that validated IP, with the original hostname kept for `Host`, SNI, and certificate checks. This is what closes the DNS-rebinding window between validation and connection.
+- Tool output in a turn is capped at `ASSISTANT_MAX_TOOL_OUTPUT_CHARS` (default 80,000 characters). Once exceeded, older results in the live prompt become one-line stubs so a few large reads or fetches do not crowd out the conversation.
 - The nftables guard blocks private address ranges for the sandbox UID. If you later bind the app to `0.0.0.0`, it remains outside that guard's scope for non-sandbox traffic; use a firewall or reverse proxy.
 - Active files are served as attachments with a restrictive CSP. Do not change that without understanding the XSS risk.
 - API keys live in `.env`, the environment, or the encrypted settings table. The setup script chmods `.env` and `data/` to owner-only.

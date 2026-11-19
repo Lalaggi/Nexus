@@ -75,13 +75,16 @@ def podman_command() -> list[str] | None:
     return [podman] if podman else None
 
 
-def sandbox_status() -> dict:
+async def sandbox_status() -> dict:
     global _STATUS_CACHE
     now = time.monotonic()
     if _STATUS_CACHE is not None and now - _STATUS_CACHE[0] < 10:
         return _STATUS_CACHE[1]
-    result = _sandbox_status_uncached()
-    _STATUS_CACHE = (now, result)
+    # `podman image exists` and `--version` are blocking subprocess calls with
+    # 20s/15s timeouts. Run them off the event loop, otherwise a cold Podman
+    # stalls every other request handled by the server.
+    result = await asyncio.to_thread(_sandbox_status_uncached)
+    _STATUS_CACHE = (time.monotonic(), result)
     return result
 
 
@@ -163,6 +166,30 @@ def _changed(before: dict[str, tuple[int, int]], after: dict[str, tuple[int, int
     return sorted(changed)
 
 
+def _sanitize_pythonpath(directory: Path) -> None:
+    """Remove auto-executed files that could persist code across sandbox runs.
+
+    ``.python-packages`` is on PYTHONPATH so pip installs survive the
+    disposable container. Python imports ``sitecustomize``/``usercustomize``
+    from anywhere on sys.path without any further tool call, which would let a
+    single prompt-injected turn silently run code in every later turn. Pip
+    packages are imported explicitly, so dropping these two files does not
+    break normal installs. (A poisoned module with a common name is still
+    possible; mount this directory read-only if that matters more than
+    in-session pip installs.)
+    """
+    for name in ("sitecustomize.py", "usercustomize.py", "sitecustomize", "usercustomize"):
+        target = directory / name
+        try:
+            target.unlink()
+        except IsADirectoryError:
+            shutil.rmtree(target, ignore_errors=True)
+        except FileNotFoundError:
+            continue
+        except OSError:
+            continue
+
+
 async def run_sandbox(ctx: ToolContext, args: dict) -> ToolResult:
     command_text = args.get("command")
     if not isinstance(command_text, str) or not command_text.strip():
@@ -181,7 +208,7 @@ async def run_sandbox(ctx: ToolContext, args: dict) -> ToolResult:
             ok=False,
             summary="Sandbox unavailable",
         )
-    status = sandbox_status()
+    status = await sandbox_status()
     if not status.get("image"):
         return ToolResult(
             content=(
@@ -205,12 +232,8 @@ async def run_sandbox(ctx: ToolContext, args: dict) -> ToolResult:
     # vanish when it exits. We install into the mounted workspace instead and
     # tell both Python and pip to look there.
     py_packages_dir = workspace / ".python-packages"
-    pip_conf_dir = workspace / ".pip"
     py_packages_dir.mkdir(parents=True, exist_ok=True)
-    pip_conf_dir.mkdir(parents=True, exist_ok=True)
-    (pip_conf_dir / "pip.conf").write_text(
-        "[install]\ntarget = /workspace/.python-packages\n", encoding="utf-8"
-    )
+    _sanitize_pythonpath(py_packages_dir)
     name = f"nexus-sbx-{uuid.uuid4().hex[:12]}"
 
     outputs_before = _snapshot(outputs)
@@ -266,7 +289,9 @@ async def run_sandbox(ctx: ToolContext, args: dict) -> ToolResult:
         "-e",
         "PYTHONPATH=/workspace/.python-packages",
         "-e",
-        "PIP_CONFIG_FILE=/workspace/.pip/pip.conf",
+        "PYTHONNOUSERSITE=1",
+        "-e",
+        "PIP_TARGET=/workspace/.python-packages",
         "-e",
         "MPLBACKEND=Agg",
         "-e",
@@ -381,8 +406,8 @@ register(
             "a compiler, and common CLI tools, plus internet access for public resources. "
             "Working directory is /workspace, which persists for this conversation. Uploads "
             "are read-only at /mnt/useruploads; write anything the user should see to "
-            "/mnt/outputs and link it with file://. Use it to compute, analyze data, make "
-            "charts, convert files, and verify code."
+            "/mnt/outputs and link it with file://. Use it to compute, do complex math, "
+            "analyze data, make charts, convert files, and verify code."
         ),
         parameters=PARAMETERS,
         handler=run_sandbox,

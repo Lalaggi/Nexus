@@ -114,7 +114,7 @@ async def _snapshot(request: Request) -> dict:
         "custom_model_id": custom_model_id,
         "custom_models": custom_models,
         "max_tool_steps": CONFIG.max_tool_steps,
-        "sandbox": sandbox_status(),
+        "sandbox": await sandbox_status(),
         "paths": {
             "uploads": str(CONFIG.uploads_dir),
             "outputs": str(CONFIG.outputs_dir),
@@ -231,7 +231,7 @@ async def health(request: Request) -> dict:
             searxng_ok = response.status_code == 200
     except Exception:
         pass
-    sandbox = sandbox_status()
+    sandbox = await sandbox_status()
     return {
         "ok": True,
         "searxng": searxng_ok,

@@ -36,8 +36,21 @@ class Config(BaseSettings):
     sandbox_dns: str = "1.1.1.1,9.9.9.9"
 
     max_tool_steps: int = 10
+    # Total characters of tool output kept in one turn's model context. The
+    # newest results stay intact; older ones collapse to one-line stubs so a
+    # few large reads/fetches cannot crowd out the actual conversation.
+    max_tool_output_chars: int = 80_000
+    tool_result_keep_recent: int = 3
     max_search_results: int = 6
     max_upload_mb: int = 50
+    # Native visual reading: images and PDF pages are rendered and sent to
+    # vision-capable models as image parts. Text-only models fall back to text.
+    vision_enabled: bool = True
+    vision_max_pages: int = 4
+    vision_max_dimension: int = 1600
+    vision_max_total_mb: float = 6.0
+    vision_max_file_mb: int = 100
+    vision_max_images_per_turn: int = 8
     user_name: str = "Ellie"
     assistant_name: str = "Nexus"
     password: str = ""

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
 from ..db import Database
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -15,6 +18,10 @@ class ToolResult:
     summary: str = ""
     data: dict[str, Any] = field(default_factory=dict)
     ok: bool = True
+    # Optional native visual content: [{"label", "mime", "data", "width", "height"}]
+    # where data is base64-encoded image bytes. The agent loop turns these into
+    # image_url parts for the next model step and never persists them.
+    media: list[dict[str, Any]] = field(default_factory=list)
 
     def as_message(self) -> str:
         return self.content
@@ -25,10 +32,17 @@ class ToolContext:
     chat_id: str
     db: Database
     emit: Callable[[dict], Awaitable[None]] | None = None
+    supports_vision: bool = True
 
     async def notify(self, event: dict) -> None:
-        if self.emit is not None:
+        # A UI/transport failure must not turn a successful tool call into a
+        # reported tool failure in the agent loop.
+        if self.emit is None:
+            return
+        try:
             await self.emit(event)
+        except Exception:
+            log.exception("Failed to emit tool event %s", event.get("type"))
 
     async def notify_tasks(self) -> None:
         tasks = await self.db.list_tasks(self.chat_id)

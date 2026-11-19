@@ -34,6 +34,7 @@ class CuratedModel:
     subtitle: str
     description: str
     providers: dict[str, ProviderSpec]
+    supports_vision: bool = True
 
 
 @dataclass(frozen=True)
@@ -44,6 +45,7 @@ class ResolvedModel:
     model_id: str      # actual model id sent to the API
     provider: ProviderSpec
     key: str
+    supports_vision: bool = True
 
 
 NEMOTRON = CuratedModel(
@@ -155,6 +157,11 @@ async def resolve_provider(
                 model_id=model_id,
                 provider=spec,
                 key=key,
+                # Capability metadata for arbitrary OpenRouter models is part of
+                # the planned provider rework. Until then, assume custom models
+                # can accept image parts; text-only models will simply reject
+                # them if asked to read a picture.
+                supports_vision=True,
             )
 
     # Curated model (Nemotron): choose provider based on preference.
@@ -178,6 +185,7 @@ async def resolve_provider(
             model_id=spec.model_id,
             provider=spec,
             key=key,
+            supports_vision=model.supports_vision,
         )
 
     # No key available for any provider in the order.

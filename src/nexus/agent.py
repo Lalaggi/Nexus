@@ -14,7 +14,6 @@ from .config import CONFIG
 from .db import Database
 from .prompt import system_prompt
 from .providers import (
-    CuratedModel,
     ProviderError,
     StreamClient,
     extract_delta,
@@ -43,7 +42,6 @@ def _extract_user_text(history: list[dict]) -> str:
 
 async def _generate_title(
     client: StreamClient,
-    model: CuratedModel,
     user_content: str,
     assistant_content: str,
 ) -> str:
@@ -214,25 +212,33 @@ def _compact_data(name: str, data: dict) -> dict:
             "stderr": data.get("stderr", "")[:6000],
         }
     if name == "write_file":
-        return {
-            "files": [
-                {
-                    "name": data.get("name", "file"),
-                    "path": data.get("path", ""),
-                    "url": data.get("url", ""),
-                }
-            ],
+        file_info = {
+            "name": data.get("name", ""),
+            "path": data.get("path", ""),
+            "url": data.get("url", ""),
+        }
+        compact: dict[str, Any] = {
             "content": data.get("content", "")[:12_000],
         }
+        # Only advertise a file when the write actually produced one. Failed
+        # writes have empty data, and defaulting to a "file" chip made the UI
+        # look like a phantom file had been written.
+        if file_info["path"] or file_info["url"]:
+            compact["files"] = [file_info]
+        return compact
     if name == "read_file":
+        file_info = {
+            "name": data.get("name", ""),
+            "path": data.get("path", ""),
+            "url": data.get("url", ""),
+        }
+        if not (file_info["path"] or file_info["url"]):
+            return {}
+        return {"files": [file_info]}
+    if name == "list_files":
         return {
-            "files": [
-                {
-                    "name": data.get("name", "file"),
-                    "path": data.get("path", ""),
-                    "url": data.get("url", ""),
-                }
-            ]
+            "files": (data.get("files") or [])[:200],
+            "content": (data.get("content") or "")[:8_000],
         }
     if name in {"task_create", "task_update"}:
         return {"task": data.get("task") or {}}
@@ -241,6 +247,54 @@ def _compact_data(name: str, data: dict) -> dict:
     if name == "set_goal":
         return {"goal": data.get("goal", "")}
     return {}
+
+
+def _elide_tool_outputs(messages: list[dict], entries: list[dict]) -> None:
+    """Keep tool output in the live prompt under a per-turn character budget.
+
+    ``entries`` follows tool-call order and stores the index of the matching
+    tool message. The newest ``tool_result_keep_recent`` results are kept
+    whole because the model is working from them; older ones become a
+    one-line stub that preserves the call name, summary, and size. The UI
+    still shows the original call event; only the live prompt is trimmed.
+    """
+    budget = CONFIG.max_tool_output_chars
+    total = sum(entry["chars"] for entry in entries if not entry["elided"])
+    if total <= budget:
+        return
+
+    keep_recent = max(1, CONFIG.tool_result_keep_recent)
+    for position, entry in enumerate(entries):
+        if total <= budget:
+            return
+        if entry["elided"] or len(entries) - position <= keep_recent:
+            continue
+        summary = f" — {entry['summary']}" if entry["summary"] else ""
+        messages[entry["index"]]["content"] = (
+            f"[Earlier {entry['name']} output elided to save context{summary}; "
+            f"{entry['chars']:,} characters.]"
+        )
+        total -= entry["chars"]
+        entry["elided"] = True
+
+    # The recent window alone can still exceed the budget. Trim those results
+    # too, oldest first, but never the result the model just received.
+    for position, entry in enumerate(entries):
+        if total <= budget or position == len(entries) - 1:
+            return
+        if entry["elided"]:
+            continue
+        content = messages[entry["index"]]["content"]
+        keep = max(4_000, len(content) - (total - budget))
+        if keep >= len(content):
+            continue
+        clipped = (
+            content[:keep]
+            + f"\n...[clipped to stay within the {budget:,}-character turn budget]"
+        )
+        messages[entry["index"]]["content"] = clipped
+        total -= len(content) - len(clipped)
+        entry["chars"] = len(clipped)
 
 
 async def run_turn(
@@ -254,9 +308,11 @@ async def run_turn(
     all_content: list[str] = []
     all_reasoning: list[str] = []
     tool_events: list[dict] = []
+    tool_outputs: list[dict] = []
     usage: dict | None = None
     error_message: str | None = None
     cancelled = False
+    images_sent = 0
     started = time.monotonic()
 
     try:
@@ -273,7 +329,12 @@ async def run_turn(
         ]
         tools = schemas()
         client = StreamClient(resolved.provider, resolved.key)
-        ctx = ToolContext(chat_id=chat_id, db=db, emit=emit)
+        ctx = ToolContext(
+            chat_id=chat_id,
+            db=db,
+            emit=emit,
+            supports_vision=CONFIG.vision_enabled and resolved.supports_vision,
+        )
 
         await emit(
             {
@@ -301,6 +362,7 @@ async def run_turn(
 
             step_text: list[str] = []
             step_reasoning: list[str] = []
+            step_visuals: list[dict[str, Any]] = []
             calls: dict[int, dict] = {}
 
             async for chunk in client.stream(messages, tools, model_id=resolved.model_id):
@@ -400,9 +462,52 @@ async def run_turn(
                         "content": result.content,
                     }
                 )
+                tool_outputs.append(
+                    {
+                        "index": len(messages) - 1,
+                        "name": name,
+                        "summary": result.summary,
+                        "chars": len(result.content),
+                        "elided": False,
+                    }
+                )
+                _elide_tool_outputs(messages, tool_outputs)
+                if result.media and ctx.supports_vision:
+                    step_visuals.extend(result.media)
                 if state.cancel.is_set():
                     cancelled = True
                     break
+            # Tool messages must stay consecutive, so native visual content is
+            # attached in one user message after every tool result for this step.
+            # It is deliberately not persisted: the next turn rebuilds history
+            # from the database.
+            if step_visuals and ctx.supports_vision:
+                remaining = max(0, CONFIG.vision_max_images_per_turn - images_sent)
+                visuals = step_visuals[:remaining]
+                if visuals:
+                    labels = ", ".join(
+                        str(item.get("label") or "image") for item in visuals
+                    )
+                    visual_parts: list[dict[str, Any]] = [
+                        {
+                            "type": "text",
+                            "text": (
+                                f"Visual content returned by your tools: {labels}. "
+                                "Use it directly; you do not need to read the file again."
+                            ),
+                        }
+                    ]
+                    for item in visuals:
+                        visual_parts.append(
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:{item['mime']};base64,{item['data']}"
+                                },
+                            }
+                        )
+                    messages.append({"role": "user", "content": visual_parts})
+                    images_sent += len(visuals)
             if cancelled:
                 break
         else:
@@ -466,7 +571,7 @@ async def run_turn(
                     user_content = _extract_user_text(history)
                     print(f"[title] user_content={user_content[:100]!r}")
                     new_title = await _generate_title(
-                        client, model, user_content, content
+                        client, user_content, content
                     )
                     print(f"[title] generated={new_title!r}")
                     if new_title and new_title != "New chat":

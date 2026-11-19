@@ -31,6 +31,9 @@ Tracks completed mobile-app work and future improvements for the Nexus Capacitor
 
 ## Backlog 📋
 
+> The canonical future-work pile is `FUTURE_PLANS.md`. Gestures and the settings
+> redesign are tracked there too; this file keeps their mobile-specific detail.
+
 ### 1. Settings menu redesign (mobile-native)
 **Goal:** Stop feeling like "desktop UI made to work on mobile." Current layout is a side-by-side category nav + content grid that doesn't translate well to narrow screens.
 
