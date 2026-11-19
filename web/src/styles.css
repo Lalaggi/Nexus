@@ -3105,13 +3105,14 @@ a {
     background: var(--surface-container-high);
   }
   .settings-card-body {
-    max-height: 0;
+    display: grid;
+    grid-template-rows: 0fr;
     overflow: hidden;
-    transition: max-height var(--dur-med) var(--ease-emphasized-decel);
+    transition: grid-template-rows var(--dur-med) var(--ease-emphasized-decel);
     padding: 0 16px 0;
   }
   .settings-card[open] .settings-card-body {
-    max-height: 3000px;
+    grid-template-rows: 1fr;
     padding: 14px 16px 18px;
   }
 

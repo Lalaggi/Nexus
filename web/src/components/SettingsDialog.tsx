@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   BarChart3,
   Check,
@@ -98,30 +98,6 @@ export default function SettingsDialog({
   });
   // Narrow-screen (phone) layout: below ~901px we use a bottom sheet + cards.
   const [narrow, setNarrow] = useState(typeof window !== 'undefined' && window.innerWidth <= 900);
-  // One ref per collapsible card for expand/collapse animation.
-  const cardRefs = {
-    provider: useRef<HTMLDetailsElement>(null),
-    personalisation: useRef<HTMLDetailsElement>(null),
-    stats: useRef<HTMLDetailsElement>(null),
-    app: useRef<HTMLDetailsElement>(null),
-  };
-
-  // Smoothly expand/collapse a card's body by measuring its content height.
-  const animateCard = useCallback((id: Category, isOpen: boolean) => {
-    const el = cardRefs[id].current;
-    if (!el) return;
-    const body = el.querySelector('.settings-card-body') as HTMLElement | null;
-    if (!body) return;
-    body.style.maxHeight = isOpen ? `${body.scrollHeight}px` : '0';
-  }, []);
-
-  // Animate initially-open cards when the dialog first opens.
-  useEffect(() => {
-    if (!open || !settings) return;
-    Object.entries(openCards).forEach(([id, isOpen]) => {
-      if (isOpen) animateCard(id as Category, true);
-    });
-  }, [open, settings, animateCard]);
 
   useEffect(() => {
     const onResize = () => setNarrow(window.innerWidth <= 900);
@@ -304,13 +280,11 @@ export default function SettingsDialog({
           {narrow ? (
             <div className="settings-cards">
               <details
-                ref={cardRefs.provider}
                 className="settings-card"
                 open={openCards.provider}
                 onToggle={(event) => {
                   const isOpen = (event.target as HTMLDetailsElement).open;
                   setOpenCards((prev) => ({ ...prev, provider: isOpen }));
-                  animateCard('provider', isOpen);
                 }}
               >
                 <summary className="settings-card-summary">
@@ -348,13 +322,11 @@ export default function SettingsDialog({
               </details>
 
               <details
-                ref={cardRefs.personalisation}
                 className="settings-card"
                 open={openCards.personalisation}
                 onToggle={(event) => {
                   const isOpen = (event.target as HTMLDetailsElement).open;
                   setOpenCards((prev) => ({ ...prev, personalisation: isOpen }));
-                  animateCard('personalisation', isOpen);
                 }}
               >
                 <summary className="settings-card-summary">
@@ -383,13 +355,11 @@ export default function SettingsDialog({
               </details>
 
               <details
-                ref={cardRefs.stats}
                 className="settings-card"
                 open={openCards.stats}
                 onToggle={(event) => {
                   const isOpen = (event.target as HTMLDetailsElement).open;
                   setOpenCards((prev) => ({ ...prev, stats: isOpen }));
-                  animateCard('stats', isOpen);
                 }}
               >
                 <summary className="settings-card-summary">
@@ -398,6 +368,38 @@ export default function SettingsDialog({
                 </summary>
                 <div className="settings-card-body">
                   <StatsPanel settings={settings} sandbox={sandbox} searxngOk={searxngOk} />
+                </div>
+              </details>
+
+              {/* Mobile-only: App Settings card with Change Server / sign out. */}
+              <details
+                className="settings-card"
+                open={openCards.app}
+                onToggle={(event) => {
+                  const isOpen = (event.target as HTMLDetailsElement).open;
+                  setOpenCards((prev) => ({ ...prev, app: isOpen }));
+                }}
+              >
+                <summary className="settings-card-summary">
+                  <Code size={16} />
+                  <span>App Settings</span>
+                </summary>
+                <div className="settings-card-body">
+                  {onSignOut && (
+                    <div className="settings-section">
+                      <div className="section-title">
+                        <ExternalLink size={16} />
+                        <h3>Server</h3>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={() => { onClose(); onSignOut(); }}
+                      >
+                        Change server
+                      </button>
+                    </div>
+                  )}
                 </div>
               </details>
             </div>
@@ -480,7 +482,6 @@ export default function SettingsDialog({
         </div>
 
         <footer className="dialog-foot">
-          <span className="dialog-hint">Changes apply to new messages.</span>
           <div className="dialog-actions">
             <button type="button" className="btn-primary" onClick={save} disabled={saving}>
               {saving ? <Loader2 size={16} className="spin" /> : <Check size={16} />}
