@@ -218,7 +218,21 @@ export default function App() {
       const dt = Date.now() - dragStartTime.current;
       const releaseVelocity = dt > 0 ? dragDeltaX.current / dt : 0;
 
-      const shouldOpen = finalTX > CLOSED_OFFSET / 2 || releaseVelocity > 0.3;
+      // A quick short flick should still open/close even if it doesn't reach
+      // the halfway point. Directional so a fast left flick closes and a fast
+      // right flick opens.
+      const fastRight = releaseVelocity > 0.25;
+      const fastLeft = releaseVelocity < -0.25;
+
+      let shouldOpen: boolean;
+      if (fastRight) {
+        shouldOpen = true;
+      } else if (fastLeft) {
+        shouldOpen = false;
+      } else {
+        shouldOpen = finalTX > CLOSED_OFFSET / 2;
+      }
+
       const targetTX = shouldOpen ? 0 : CLOSED_OFFSET;
 
       setSidebarOpen(shouldOpen);
