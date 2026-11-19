@@ -40,6 +40,16 @@ export function useDrag({
   const dragging = useRef(false);
 
   const onTouchStart = useCallback((event: TouchEvent) => {
+    const target = event.target as HTMLElement | null;
+    // Never intercept touches on focusable form elements.
+    if (
+      target &&
+      (target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT')
+    ) {
+      return;
+    }
     const touch = event.touches[0];
     const now = Date.now();
     start.current = { x: touch.clientX, y: touch.clientY, time: now };

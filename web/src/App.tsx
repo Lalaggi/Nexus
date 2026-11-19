@@ -175,38 +175,68 @@ export default function App() {
     return () => mq.removeEventListener('change', handle);
   }, []);
 
-  // Drag-follow sidebar gesture: the sidebar translates linearly with your finger,
-  // then snaps open or closed on lift. Vertical scrolling is never intercepted.
-  const [dragging, setDragging] = useState(false);
+  // Drag-follow sidebar gesture: the sidebar tracks the finger 1:1 while the
+  // touch is down (direct transform writes, no transition), then snaps open or
+  // closed on lift with a spring/seeded animation. Vertical scrolling is never
+  // intercepted — the gesture only locks in on clear horizontal movement.
+  // Attached to the app root (always touchable) so it works whether the
+  // sidebar is open or closed.
   const dragStartTX = useRef(0);
-  const dragTX = useRef(0); // running translateX during the drag
-  const CLOSED_OFFSET = -(296 + 2); // matches .sidebar-closed transform (sidebar-width + 2px border)
+  const dragDeltaX = useRef(0);
+  const dragStartTime = useRef(0);
+  const CLOSED_OFFSET = -(296 + 2); // sidebar-width + 2px border
+  const releaseHandlerRef = useRef<(() => void) | null>(null);
 
   useDrag({
-    element: sidebarRef.current,
+    element: appRef.current,
     onDragStart: () => {
-      setDragging(true);
       dragStartTX.current = sidebarOpen ? 0 : CLOSED_OFFSET;
-      dragTX.current = dragStartTX.current;
-    },
-    onDrag: (deltaX) => {
-      let nextTX = dragStartTX.current + deltaX;
-      nextTX = Math.min(0, Math.max(CLOSED_OFFSET, nextTX));
-      dragTX.current = nextTX;
+      dragDeltaX.current = 0;
+      dragStartTime.current = Date.now();
+      // Cancel any pending release-animation cleanup so a new drag can start.
+      if (releaseHandlerRef.current) {
+        sidebarRef.current?.removeEventListener(
+          'transitionend',
+          releaseHandlerRef.current,
+        );
+        releaseHandlerRef.current = null;
+      }
       if (sidebarRef.current) {
         sidebarRef.current.style.transition = 'none';
+      }
+    },
+    onDrag: (deltaX) => {
+      dragDeltaX.current = deltaX;
+      let nextTX = dragStartTX.current + deltaX;
+      nextTX = Math.min(0, Math.max(CLOSED_OFFSET, nextTX));
+      if (sidebarRef.current) {
         sidebarRef.current.style.transform = `translateX(${nextTX}px)`;
       }
     },
     onDragEnd: (_deltaX, _deltaY, velocityX) => {
-      const shouldOpen = dragTX.current > CLOSED_OFFSET / 2 || velocityX > 0.25;
+      const finalTX = dragStartTX.current + dragDeltaX.current;
+      const dt = Date.now() - dragStartTime.current;
+      const releaseVelocity = dt > 0 ? dragDeltaX.current / dt : 0;
+
+      const shouldOpen = finalTX > CLOSED_OFFSET / 2 || releaseVelocity > 0.3;
+      const targetTX = shouldOpen ? 0 : CLOSED_OFFSET;
+
       setSidebarOpen(shouldOpen);
-      setDragging(false);
-      dragStartTX.current = 0;
-      dragTX.current = 0;
+
       if (sidebarRef.current) {
-        sidebarRef.current.style.transition = '';
-        sidebarRef.current.style.transform = '';
+        sidebarRef.current.style.transition =
+          'transform 250ms cubic-bezier(0.2, 0, 0, 1)';
+        sidebarRef.current.style.transform = `translateX(${targetTX}px)`;
+
+        const handler = () => {
+          if (sidebarRef.current) {
+            sidebarRef.current.style.transition = '';
+            sidebarRef.current.style.transform = '';
+          }
+          releaseHandlerRef.current = null;
+        };
+        releaseHandlerRef.current = handler;
+        sidebarRef.current.addEventListener('transitionend', handler);
       }
     },
   });
