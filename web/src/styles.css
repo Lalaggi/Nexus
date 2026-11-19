@@ -3017,7 +3017,7 @@ a {
     right: 0;
     width: 100vw;
     max-width: none;
-    height: 90dvh;
+    height: 95dvh;
     border-radius: var(--shape-xl) var(--shape-xl) 0 0;
     border: 0;
     border-top: 1px solid var(--outline-variant);
@@ -3065,11 +3065,6 @@ a {
     white-space: nowrap;
   }
 
-  /* Top category chips bar on phones. */
-  .settings-chips {
-    margin: 12px 16px 10px;
-  }
-
   /* Collapsible category cards on phones. */
   .settings-cards {
     display: flex;
@@ -3110,8 +3105,14 @@ a {
     background: var(--surface-container-high);
   }
   .settings-card-body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height var(--dur-med) var(--ease-emphasized-decel);
+    padding: 0 16px 0;
+  }
+  .settings-card[open] .settings-card-body {
+    max-height: 3000px;
     padding: 14px 16px 18px;
-    animation: fadeIn var(--dur-short) var(--ease-emphasized);
   }
 
   .chat-delete {

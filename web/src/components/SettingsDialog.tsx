@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   BarChart3,
   Check,
@@ -49,7 +49,7 @@ export interface TestResult {
   model_visible?: boolean;
 }
 
-type Category = 'provider' | 'personalisation' | 'stats';
+type Category = 'provider' | 'personalisation' | 'stats' | 'app';
 
 const CATEGORIES: Array<{ id: Category; label: string; icon: React.ElementType }> = [
   { id: 'provider', label: 'Provider', icon: KeyRound },
@@ -87,16 +87,41 @@ export default function SettingsDialog({
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [test, setTest] = useState<TestResult | null>(null);
+  // Which category panel is active on desktop (two-column layout).
   const [category, setCategory] = useState<Category>('provider');
-  // Narrow-screen (phone) layout: below ~901px we use a bottom sheet + top chips.
+  // Which cards are expanded on mobile (independent collapsible sections).
+  const [openCards, setOpenCards] = useState<Record<Category, boolean>>({
+    provider: true,
+    personalisation: false,
+    stats: false,
+    app: false,
+  });
+  // Narrow-screen (phone) layout: below ~901px we use a bottom sheet + cards.
   const [narrow, setNarrow] = useState(typeof window !== 'undefined' && window.innerWidth <= 900);
-  // One ref per collapsible card so chips can scroll the matching card into view.
+  // One ref per collapsible card for expand/collapse animation.
   const cardRefs = {
     provider: useRef<HTMLDetailsElement>(null),
     personalisation: useRef<HTMLDetailsElement>(null),
     stats: useRef<HTMLDetailsElement>(null),
+    app: useRef<HTMLDetailsElement>(null),
   };
-  const [customModelId, setCustomModelId] = useState('');
+
+  // Smoothly expand/collapse a card's body by measuring its content height.
+  const animateCard = useCallback((id: Category, isOpen: boolean) => {
+    const el = cardRefs[id].current;
+    if (!el) return;
+    const body = el.querySelector('.settings-card-body') as HTMLElement | null;
+    if (!body) return;
+    body.style.maxHeight = isOpen ? `${body.scrollHeight}px` : '0';
+  }, []);
+
+  // Animate initially-open cards when the dialog first opens.
+  useEffect(() => {
+    if (!open || !settings) return;
+    Object.entries(openCards).forEach(([id, isOpen]) => {
+      if (isOpen) animateCard(id as Category, true);
+    });
+  }, [open, settings, animateCard]);
 
   useEffect(() => {
     const onResize = () => setNarrow(window.innerWidth <= 900);
@@ -104,11 +129,7 @@ export default function SettingsDialog({
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  /** Open the card for `id` and scroll it into view on narrow screens. */
-  const selectCategory = (id: Category) => {
-    setCategory(id);
-    cardRefs[id].current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  };
+  const [customModelId, setCustomModelId] = useState('');
 
   // Custom models
   const [customModels, setCustomModels] = useState<CustomModel[]>([]);
@@ -281,127 +302,110 @@ export default function SettingsDialog({
 
         <div className="dialog-body settings-layout">
           {narrow ? (
-            <>
-              {/* Top category chips / segmented control on phones. */}
-              <div className="segmented settings-chips" role="tablist" aria-label="Settings category">
-                {CATEGORIES.map((cat) => {
-                  const CatIcon = cat.icon;
-                  return (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={category === cat.id}
-                      className={`settings-chip ${category === cat.id ? 'is-active' : ''}`}
-                      onClick={() => selectCategory(cat.id)}
-                    >
-                      <CatIcon size={15} />
-                      <span>{cat.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
+            <div className="settings-cards">
+              <details
+                ref={cardRefs.provider}
+                className="settings-card"
+                open={openCards.provider}
+                onToggle={(event) => {
+                  const isOpen = (event.target as HTMLDetailsElement).open;
+                  setOpenCards((prev) => ({ ...prev, provider: isOpen }));
+                  animateCard('provider', isOpen);
+                }}
+              >
+                <summary className="settings-card-summary">
+                  <KeyRound size={16} />
+                  <span>Provider</span>
+                </summary>
+                <div className="settings-card-body">
+                  <ProviderPanel
+                    settings={settings}
+                    provider={provider}
+                    setProvider={setProvider}
+                    nimKey={nimKey}
+                    setNimKey={setNimKey}
+                    openrouterKey={openrouterKey}
+                    setOpenrouterKey={setOpenrouterKey}
+                    customModelId={customModelId}
+                    setCustomModelId={setCustomModelId}
+                    clearNim={clearNim}
+                    setClearNim={setClearNim}
+                    clearOpenrouter={clearOpenrouter}
+                    setClearOpenrouter={setClearOpenrouter}
+                    runTest={runTest}
+                    testing={testing}
+                    test={test}
+                    customModels={customModels}
+                    newModelName={newModelName}
+                    setNewModelName={setNewModelName}
+                    newModelId={newModelId}
+                    setNewModelId={setNewModelId}
+                    addingModel={addingModel}
+                    addModel={addModel}
+                    removeModel={removeModel}
+                  />
+                </div>
+              </details>
 
-              {/* All categories live in one scrolling column as collapsible cards. */}
-              <div className="settings-cards">
-                <details
-                  ref={cardRefs.provider}
-                  className="settings-card"
-                  open={category === 'provider'}
-                  onToggle={(event) => {
-                    if ((event.target as HTMLDetailsElement).open) setCategory('provider');
-                  }}
-                >
-                  <summary className="settings-card-summary">
-                    <KeyRound size={16} />
-                    <span>Provider</span>
-                  </summary>
-                  <div className="settings-card-body">
-                    <ProviderPanel
-                      settings={settings}
-                      provider={provider}
-                      setProvider={setProvider}
-                      nimKey={nimKey}
-                      setNimKey={setNimKey}
-                      openrouterKey={openrouterKey}
-                      setOpenrouterKey={setOpenrouterKey}
-                      customModelId={customModelId}
-                      setCustomModelId={setCustomModelId}
-                      clearNim={clearNim}
-                      setClearNim={setClearNim}
-                      clearOpenrouter={clearOpenrouter}
-                      setClearOpenrouter={setClearOpenrouter}
-                      runTest={runTest}
-                      testing={testing}
-                      test={test}
-                      customModels={customModels}
-                      newModelName={newModelName}
-                      setNewModelName={setNewModelName}
-                      newModelId={newModelId}
-                      setNewModelId={setNewModelId}
-                      addingModel={addingModel}
-                      addModel={addModel}
-                      removeModel={removeModel}
-                    />
-                  </div>
-                </details>
+              <details
+                ref={cardRefs.personalisation}
+                className="settings-card"
+                open={openCards.personalisation}
+                onToggle={(event) => {
+                  const isOpen = (event.target as HTMLDetailsElement).open;
+                  setOpenCards((prev) => ({ ...prev, personalisation: isOpen }));
+                  animateCard('personalisation', isOpen);
+                }}
+              >
+                <summary className="settings-card-summary">
+                  <User size={16} />
+                  <span>Personalisation</span>
+                </summary>
+                <div className="settings-card-body">
+                  <PersonalisationPanel
+                    settings={settings}
+                    userName={userName}
+                    setUserName={setUserName}
+                    temperature={temperature}
+                    setTemperature={setTemperature}
+                    customInstructions={customInstructions}
+                    setCustomInstructions={setCustomInstructions}
+                    notes={notes}
+                    newNoteKey={newNoteKey}
+                    setNewNoteKey={setNewNoteKey}
+                    newNoteValue={newNoteValue}
+                    setNewNoteValue={setNewNoteValue}
+                    addingNote={addingNote}
+                    addNote={addNote}
+                    removeNote={removeNote}
+                  />
+                </div>
+              </details>
 
-                <details
-                  ref={cardRefs.personalisation}
-                  className="settings-card"
-                  open={category === 'personalisation'}
-                  onToggle={(event) => {
-                    if ((event.target as HTMLDetailsElement).open) setCategory('personalisation');
-                  }}
-                >
-                  <summary className="settings-card-summary">
-                    <User size={16} />
-                    <span>Personalisation</span>
-                  </summary>
-                  <div className="settings-card-body">
-                    <PersonalisationPanel
-                      settings={settings}
-                      userName={userName}
-                      setUserName={setUserName}
-                      temperature={temperature}
-                      setTemperature={setTemperature}
-                      customInstructions={customInstructions}
-                      setCustomInstructions={setCustomInstructions}
-                      notes={notes}
-                      newNoteKey={newNoteKey}
-                      setNewNoteKey={setNewNoteKey}
-                      newNoteValue={newNoteValue}
-                      setNewNoteValue={setNewNoteValue}
-                      addingNote={addingNote}
-                      addNote={addNote}
-                      removeNote={removeNote}
-                    />
-                  </div>
-                </details>
-
-                <details
-                  ref={cardRefs.stats}
-                  className="settings-card"
-                  open={category === 'stats'}
-                  onToggle={(event) => {
-                    if ((event.target as HTMLDetailsElement).open) setCategory('stats');
-                  }}
-                >
-                  <summary className="settings-card-summary">
-                    <BarChart3 size={16} />
-                    <span>Stats</span>
-                  </summary>
-                  <div className="settings-card-body">
-                    <StatsPanel settings={settings} sandbox={sandbox} searxngOk={searxngOk} />
-                  </div>
-                </details>
-              </div>
-            </>
+              <details
+                ref={cardRefs.stats}
+                className="settings-card"
+                open={openCards.stats}
+                onToggle={(event) => {
+                  const isOpen = (event.target as HTMLDetailsElement).open;
+                  setOpenCards((prev) => ({ ...prev, stats: isOpen }));
+                  animateCard('stats', isOpen);
+                }}
+              >
+                <summary className="settings-card-summary">
+                  <BarChart3 size={16} />
+                  <span>Stats</span>
+                </summary>
+                <div className="settings-card-body">
+                  <StatsPanel settings={settings} sandbox={sandbox} searxngOk={searxngOk} />
+                </div>
+              </details>
+            </div>
           ) : (
             <>
               {/* Desktop/tablet: keep the existing two-column sidebar layout. */}
               <nav className="settings-sidebar">
-                {CATEGORIES.map((cat) => {
+                {CATEGORIES.filter((cat) => cat.id !== 'app').map((cat) => {
                   const active = category === cat.id;
                   const CatIcon = cat.icon;
                   return (
@@ -478,14 +482,6 @@ export default function SettingsDialog({
         <footer className="dialog-foot">
           <span className="dialog-hint">Changes apply to new messages.</span>
           <div className="dialog-actions">
-            {onSignOut && (
-              <button type="button" className="btn-ghost" onClick={() => { onClose(); onSignOut(); }}>
-                Change server
-              </button>
-            )}
-            <button type="button" className="btn-ghost" onClick={onClose}>
-              Cancel
-            </button>
             <button type="button" className="btn-primary" onClick={save} disabled={saving}>
               {saving ? <Loader2 size={16} className="spin" /> : <Check size={16} />}
               Save changes
