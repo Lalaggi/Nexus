@@ -174,11 +174,12 @@ export default function App() {
     return () => mq.removeEventListener('change', handle);
   }, []);
 
-  // Swipe right from the left edge opens the chats sidebar; swipe left closes it.
-  // Passive listeners, so scrolling and taps are never blocked.
+  // Swipe right from anywhere opens the chats sidebar; swipe left from anywhere closes it.
+  // Passive listeners, so scrolling and taps are never blocked. Vertical scrolls are ignored
+  // because only the dominant horizontal direction is reported.
   const handleSwipe = useCallback(
     (direction: 'left' | 'right' | 'up' | 'down', distance: number, startX: number) => {
-      if (direction === 'right' && startX < 32) {
+      if (direction === 'right') {
         setSidebarOpen(true);
       } else if (direction === 'left') {
         setSidebarOpen(false);
@@ -186,7 +187,7 @@ export default function App() {
     },
     [],
   );
-  useSwipe({ element: appRef.current, edge: 'left', threshold: 44, onSwipe: handleSwipe });
+  useSwipe({ element: appRef.current, threshold: 44, onSwipe: handleSwipe });
 
   useEffect(() => {
     if (boot === 'ready') window.setTimeout(() => inputRef.current?.focus(), 80);
