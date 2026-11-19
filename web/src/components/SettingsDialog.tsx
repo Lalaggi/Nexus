@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   BarChart3,
   Check,
@@ -88,7 +88,27 @@ export default function SettingsDialog({
   const [testing, setTesting] = useState(false);
   const [test, setTest] = useState<TestResult | null>(null);
   const [category, setCategory] = useState<Category>('provider');
+  // Narrow-screen (phone) layout: below ~901px we use a bottom sheet + top chips.
+  const [narrow, setNarrow] = useState(typeof window !== 'undefined' && window.innerWidth <= 900);
+  // One ref per collapsible card so chips can scroll the matching card into view.
+  const cardRefs = {
+    provider: useRef<HTMLDetailsElement>(null),
+    personalisation: useRef<HTMLDetailsElement>(null),
+    stats: useRef<HTMLDetailsElement>(null),
+  };
   const [customModelId, setCustomModelId] = useState('');
+
+  useEffect(() => {
+    const onResize = () => setNarrow(window.innerWidth <= 900);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  /** Open the card for `id` and scroll it into view on narrow screens. */
+  const selectCategory = (id: Category) => {
+    setCategory(id);
+    cardRefs[id].current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
 
   // Custom models
   const [customModels, setCustomModels] = useState<CustomModel[]>([]);
@@ -240,11 +260,15 @@ export default function SettingsDialog({
     }
   };
 
-  const Icon = CATEGORIES.find((c) => c.id === category)?.icon ?? KeyRound;
-
   return (
     <div className="dialog-backdrop" onClick={onClose}>
-      <div className="dialog" role="dialog" aria-modal="true" aria-label="Settings" onClick={(event) => event.stopPropagation()}>
+      <div
+        className="dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Settings"
+        onClick={(event) => event.stopPropagation()}
+      >
         <header className="dialog-head">
           <div>
             <span className="sheet-kicker">Configuration</span>
@@ -256,77 +280,199 @@ export default function SettingsDialog({
         </header>
 
         <div className="dialog-body settings-layout">
-          <nav className="settings-sidebar">
-            {CATEGORIES.map((cat) => {
-              const active = category === cat.id;
-              const CatIcon = cat.icon;
-              return (
-                <button
-                  key={cat.id}
-                  type="button"
-                  className={`settings-cat ${active ? 'is-active' : ''}`}
-                  onClick={() => setCategory(cat.id)}
-                >
-                  <CatIcon size={15} />
-                  <span>{cat.label}</span>
-                  {active && <ChevronRight size={12} />}
-                </button>
-              );
-            })}
-          </nav>
+          {narrow ? (
+            <>
+              {/* Top category chips / segmented control on phones. */}
+              <div className="segmented settings-chips" role="tablist" aria-label="Settings category">
+                {CATEGORIES.map((cat) => {
+                  const CatIcon = cat.icon;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={category === cat.id}
+                      className={`settings-chip ${category === cat.id ? 'is-active' : ''}`}
+                      onClick={() => selectCategory(cat.id)}
+                    >
+                      <CatIcon size={15} />
+                      <span>{cat.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
 
-          <main className="settings-content">
-            {category === 'provider' && (
-              <ProviderPanel
-                settings={settings}
-                provider={provider}
-                setProvider={setProvider}
-                nimKey={nimKey}
-                setNimKey={setNimKey}
-                openrouterKey={openrouterKey}
-                setOpenrouterKey={setOpenrouterKey}
-                customModelId={customModelId}
-                setCustomModelId={setCustomModelId}
-                clearNim={clearNim}
-                setClearNim={setClearNim}
-                clearOpenrouter={clearOpenrouter}
-                setClearOpenrouter={setClearOpenrouter}
-                runTest={runTest}
-                testing={testing}
-                test={test}
-                customModels={customModels}
-                newModelName={newModelName}
-                setNewModelName={setNewModelName}
-                newModelId={newModelId}
-                setNewModelId={setNewModelId}
-                addingModel={addingModel}
-                addModel={addModel}
-                removeModel={removeModel}
-              />
-            )}
-            {category === 'personalisation' && (
-              <PersonalisationPanel
-                settings={settings}
-                userName={userName}
-                setUserName={setUserName}
-                temperature={temperature}
-                setTemperature={setTemperature}
-                customInstructions={customInstructions}
-                setCustomInstructions={setCustomInstructions}
-                notes={notes}
-                newNoteKey={newNoteKey}
-                setNewNoteKey={setNewNoteKey}
-                newNoteValue={newNoteValue}
-                setNewNoteValue={setNewNoteValue}
-                addingNote={addingNote}
-                addNote={addNote}
-                removeNote={removeNote}
-              />
-            )}
-            {category === 'stats' && (
-              <StatsPanel settings={settings} sandbox={sandbox} searxngOk={searxngOk} />
-            )}
-          </main>
+              {/* All categories live in one scrolling column as collapsible cards. */}
+              <div className="settings-cards">
+                <details
+                  ref={cardRefs.provider}
+                  className="settings-card"
+                  open={category === 'provider'}
+                  onToggle={(event) => {
+                    if ((event.target as HTMLDetailsElement).open) setCategory('provider');
+                  }}
+                >
+                  <summary className="settings-card-summary">
+                    <KeyRound size={16} />
+                    <span>Provider</span>
+                  </summary>
+                  <div className="settings-card-body">
+                    <ProviderPanel
+                      settings={settings}
+                      provider={provider}
+                      setProvider={setProvider}
+                      nimKey={nimKey}
+                      setNimKey={setNimKey}
+                      openrouterKey={openrouterKey}
+                      setOpenrouterKey={setOpenrouterKey}
+                      customModelId={customModelId}
+                      setCustomModelId={setCustomModelId}
+                      clearNim={clearNim}
+                      setClearNim={setClearNim}
+                      clearOpenrouter={clearOpenrouter}
+                      setClearOpenrouter={setClearOpenrouter}
+                      runTest={runTest}
+                      testing={testing}
+                      test={test}
+                      customModels={customModels}
+                      newModelName={newModelName}
+                      setNewModelName={setNewModelName}
+                      newModelId={newModelId}
+                      setNewModelId={setNewModelId}
+                      addingModel={addingModel}
+                      addModel={addModel}
+                      removeModel={removeModel}
+                    />
+                  </div>
+                </details>
+
+                <details
+                  ref={cardRefs.personalisation}
+                  className="settings-card"
+                  open={category === 'personalisation'}
+                  onToggle={(event) => {
+                    if ((event.target as HTMLDetailsElement).open) setCategory('personalisation');
+                  }}
+                >
+                  <summary className="settings-card-summary">
+                    <User size={16} />
+                    <span>Personalisation</span>
+                  </summary>
+                  <div className="settings-card-body">
+                    <PersonalisationPanel
+                      settings={settings}
+                      userName={userName}
+                      setUserName={setUserName}
+                      temperature={temperature}
+                      setTemperature={setTemperature}
+                      customInstructions={customInstructions}
+                      setCustomInstructions={setCustomInstructions}
+                      notes={notes}
+                      newNoteKey={newNoteKey}
+                      setNewNoteKey={setNewNoteKey}
+                      newNoteValue={newNoteValue}
+                      setNewNoteValue={setNewNoteValue}
+                      addingNote={addingNote}
+                      addNote={addNote}
+                      removeNote={removeNote}
+                    />
+                  </div>
+                </details>
+
+                <details
+                  ref={cardRefs.stats}
+                  className="settings-card"
+                  open={category === 'stats'}
+                  onToggle={(event) => {
+                    if ((event.target as HTMLDetailsElement).open) setCategory('stats');
+                  }}
+                >
+                  <summary className="settings-card-summary">
+                    <BarChart3 size={16} />
+                    <span>Stats</span>
+                  </summary>
+                  <div className="settings-card-body">
+                    <StatsPanel settings={settings} sandbox={sandbox} searxngOk={searxngOk} />
+                  </div>
+                </details>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Desktop/tablet: keep the existing two-column sidebar layout. */}
+              <nav className="settings-sidebar">
+                {CATEGORIES.map((cat) => {
+                  const active = category === cat.id;
+                  const CatIcon = cat.icon;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      className={`settings-cat ${active ? 'is-active' : ''}`}
+                      onClick={() => setCategory(cat.id)}
+                    >
+                      <CatIcon size={15} />
+                      <span>{cat.label}</span>
+                      {active && <ChevronRight size={12} />}
+                    </button>
+                  );
+                })}
+              </nav>
+
+              <main className="settings-content">
+                {category === 'provider' && (
+                  <ProviderPanel
+                    settings={settings}
+                    provider={provider}
+                    setProvider={setProvider}
+                    nimKey={nimKey}
+                    setNimKey={setNimKey}
+                    openrouterKey={openrouterKey}
+                    setOpenrouterKey={setOpenrouterKey}
+                    customModelId={customModelId}
+                    setCustomModelId={setCustomModelId}
+                    clearNim={clearNim}
+                    setClearNim={setClearNim}
+                    clearOpenrouter={clearOpenrouter}
+                    setClearOpenrouter={setClearOpenrouter}
+                    runTest={runTest}
+                    testing={testing}
+                    test={test}
+                    customModels={customModels}
+                    newModelName={newModelName}
+                    setNewModelName={setNewModelName}
+                    newModelId={newModelId}
+                    setNewModelId={setNewModelId}
+                    addingModel={addingModel}
+                    addModel={addModel}
+                    removeModel={removeModel}
+                  />
+                )}
+                {category === 'personalisation' && (
+                  <PersonalisationPanel
+                    settings={settings}
+                    userName={userName}
+                    setUserName={setUserName}
+                    temperature={temperature}
+                    setTemperature={setTemperature}
+                    customInstructions={customInstructions}
+                    setCustomInstructions={setCustomInstructions}
+                    notes={notes}
+                    newNoteKey={newNoteKey}
+                    setNewNoteKey={setNewNoteKey}
+                    newNoteValue={newNoteValue}
+                    setNewNoteValue={setNewNoteValue}
+                    addingNote={addingNote}
+                    addNote={addNote}
+                    removeNote={removeNote}
+                  />
+                )}
+                {category === 'stats' && (
+                  <StatsPanel settings={settings} sandbox={sandbox} searxngOk={searxngOk} />
+                )}
+              </main>
+            </>
+          )}
         </div>
 
         <footer className="dialog-foot">

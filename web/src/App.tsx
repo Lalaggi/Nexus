@@ -43,6 +43,7 @@ import SettingsDialog, { type SettingsPatch, type TestResult } from './component
 import Login from './components/Login';
 import Connect from './components/Connect';
 import { Brandmark } from './components/Brandmark';
+import { useSwipe } from './useGesture';
 
 type Boot = 'loading' | 'login' | 'ready' | 'error';
 
@@ -107,6 +108,7 @@ export default function App() {
   }, [settings]);
   const toastTimer = useRef<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const appRef = useRef<HTMLDivElement>(null);
   const loadChatRef = useRef<(id: string) => Promise<void>>(async () => {});
 
   useEffect(() => {
@@ -162,6 +164,29 @@ export default function App() {
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
+
+  const [reduceMotion, setReduceMotion] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const handle = () => setReduceMotion(mq.matches);
+    mq.addEventListener('change', handle);
+    handle();
+    return () => mq.removeEventListener('change', handle);
+  }, []);
+
+  // Swipe right from the left edge opens the chats sidebar; swipe left closes it.
+  // Passive listeners, so scrolling and taps are never blocked.
+  const handleSwipe = useCallback(
+    (direction: 'left' | 'right' | 'up' | 'down', distance: number, startX: number) => {
+      if (direction === 'right' && startX < 32) {
+        setSidebarOpen(true);
+      } else if (direction === 'left') {
+        setSidebarOpen(false);
+      }
+    },
+    [],
+  );
+  useSwipe({ element: appRef.current, edge: 'left', threshold: 44, onSwipe: handleSwipe });
 
   useEffect(() => {
     if (boot === 'ready') window.setTimeout(() => inputRef.current?.focus(), 80);
@@ -786,7 +811,12 @@ export default function App() {
   const hasMessages = messages.length > 0;
 
   return (
-    <div className={`app ${sidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
+    <div
+      className={`app ${sidebarOpen ? 'sidebar-open' : 'sidebar-closed'}${
+        reduceMotion ? ' reduce-motion' : ''
+      }`}
+      ref={appRef}
+    >
       <Sidebar
         chats={chats}
         activeId={activeChat?.id ?? null}
