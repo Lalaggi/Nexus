@@ -44,6 +44,7 @@ async def _generate_title(
     client: StreamClient,
     user_content: str,
     assistant_content: str,
+    cancel: asyncio.Event | None = None,
 ) -> str:
     """Generate a short, descriptive chat title (3-6 words) from the conversation."""
     prompt = (
@@ -56,7 +57,13 @@ async def _generate_title(
     chunks: list[str] = []
     try:
         async for chunk in client.stream(
-            [{"role": "user", "content": prompt}], None, tool_choice=None
+            [{"role": "user", "content": prompt}],
+            None,
+            tool_choice=None,
+            cancel=cancel,
+            # A title is cosmetic; a rate-limited title request must not hold
+            # the user's completed answer hostage.
+            max_attempts=1,
         ):
             text, _reasoning, _deltas, _finish, _usage = extract_delta(chunk)
             if text:
@@ -365,7 +372,13 @@ async def run_turn(
             step_visuals: list[dict[str, Any]] = []
             calls: dict[int, dict] = {}
 
-            async for chunk in client.stream(messages, tools, model_id=resolved.model_id):
+            async for chunk in client.stream(
+                messages,
+                tools,
+                model_id=resolved.model_id,
+                cancel=state.cancel,
+                on_retry=emit,
+            ):
                 if state.cancel.is_set():
                     cancelled = True
                     break
@@ -521,7 +534,13 @@ async def run_turn(
                     ),
                 }
             )
-            async for chunk in client.stream(messages, None, tool_choice=None):
+            async for chunk in client.stream(
+                messages,
+                None,
+                tool_choice=None,
+                cancel=state.cancel,
+                on_retry=emit,
+            ):
                 if state.cancel.is_set():
                     cancelled = True
                     break
@@ -563,7 +582,11 @@ async def run_turn(
         # Generate a topic-based chat title on the first nexus turn.
         try:
             chat = await db.get_chat(chat_id)
-            if chat and chat.get("title") in {"", "New chat"}:
+            if (
+                not cancelled
+                and chat
+                and chat.get("title") in {"", "New chat"}
+            ):
                 messages = await db.list_messages(chat_id)
                 assistant_count = sum(1 for m in messages if m["role"] == "assistant")
                 print(f"[title] chat title={chat.get('title')!r} assistant_count={assistant_count}")
@@ -571,7 +594,7 @@ async def run_turn(
                     user_content = _extract_user_text(history)
                     print(f"[title] user_content={user_content[:100]!r}")
                     new_title = await _generate_title(
-                        client, user_content, content
+                        client, user_content, content, cancel=state.cancel
                     )
                     print(f"[title] generated={new_title!r}")
                     if new_title and new_title != "New chat":

@@ -63,6 +63,14 @@ export interface Message {
   duration_ms?: number;
   seq?: number;
   error?: string;
+  retry?: RetryStatus;
+}
+
+export interface RetryStatus {
+  attempt: number;
+  max_attempts: number;
+  delay_ms: number;
+  message?: string;
 }
 
 export type TaskStatus = 'pending' | 'in_progress' | 'done' | 'blocked';

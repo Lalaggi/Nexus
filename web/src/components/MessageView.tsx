@@ -5,6 +5,7 @@ import {
   Edit2,
   FileText,
   Image as ImageIcon,
+  Loader2,
   RotateCcw,
 } from 'lucide-react';
 import type { Attachment, Message } from '../types';
@@ -62,6 +63,14 @@ function AttachmentGrid({
       })}
     </div>
   );
+}
+
+function formatRetryDelay(ms: number): string {
+  const seconds = Math.max(1, Math.ceil(ms / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
 }
 
 export default function MessageView({
@@ -151,9 +160,19 @@ export default function MessageView({
           onOpenFile={onOpenFile}
         />
 
+        {message.retry && (
+          <div className="retry-status" role="status" title={message.retry.message || undefined}>
+            <Loader2 size={13} className="spin" />
+            <span>
+              Retrying in {formatRetryDelay(message.retry.delay_ms)} · attempt{' '}
+              {message.retry.attempt} of {message.retry.max_attempts}
+            </span>
+          </div>
+        )}
+
         {hasVisibleContent ? (
           <Markdown content={message.content} onOpenFile={onOpenFile} />
-        ) : streaming ? (
+        ) : streaming && message.retry ? null : streaming ? (
           <div className="thinking" aria-label="Nexus is thinking">
             <span />
             <span />

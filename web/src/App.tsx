@@ -339,6 +339,7 @@ export default function App() {
                 ...message,
                 content: message.content + text,
                 reasoning: message.reasoning + reasoning,
+                retry: undefined,
               }
             : message,
         ),
@@ -394,6 +395,25 @@ export default function App() {
         case 'reasoning': {
           pending.reasoning += String(event.text ?? '');
           schedule();
+          break;
+        }
+        case 'retry': {
+          flush();
+          setMessages((previous) =>
+            previous.map((message) =>
+              message.id === localAssistantId
+                ? {
+                    ...message,
+                    retry: {
+                      attempt: Number(event.attempt ?? 0) || 1,
+                      max_attempts: Number(event.max_attempts ?? 0) || 1,
+                      delay_ms: Number(event.delay_ms ?? 0) || 0,
+                      message: String(event.message ?? ''),
+                    },
+                  }
+                : message,
+            ),
+          );
           break;
         }
         case 'tool_call': {
@@ -452,7 +472,9 @@ export default function App() {
           notify(text);
           setMessages((previous) =>
             previous.map((message) =>
-              message.id === localAssistantId ? { ...message, error: text } : message,
+              message.id === localAssistantId
+                ? { ...message, error: text, retry: undefined }
+                : message,
             ),
           );
           break;
@@ -480,6 +502,7 @@ export default function App() {
                     reasoning: finalReasoning || message.reasoning,
                     tool_events: finalTools.length ? finalTools : message.tool_events,
                     duration_ms: Number(event.duration_ms ?? message.duration_ms ?? 0) || undefined,
+                    retry: undefined,
                   }
                 : message,
             ),
@@ -521,8 +544,10 @@ export default function App() {
         setMessages((previous) =>
           previous.map((message) =>
             message.id === localAssistantId && !message.content && !message.tool_events.length
-              ? { ...message, content: '_No response._' }
-              : message,
+              ? { ...message, content: '_No response._', retry: undefined }
+              : message.id === localAssistantId
+                ? { ...message, retry: undefined }
+                : message,
           ),
         );
         void refreshChats();
@@ -608,7 +633,7 @@ export default function App() {
     setMessages((previous) =>
       previous.map((message) =>
         message.id === streamingId
-          ? { ...message, content: message.content || '_Stopped._' }
+          ? { ...message, content: message.content || '_Stopped._', retry: undefined }
           : message,
       ),
     );

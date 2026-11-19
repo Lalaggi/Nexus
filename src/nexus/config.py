@@ -64,6 +64,17 @@ class Config(BaseSettings):
     max_tokens: int = 8192
     request_timeout: float = 300.0
 
+    # Provider retry policy. Rate limits and temporary outages back off with
+    # jitter; a provider Retry-After hint can raise each wait, capped at
+    # retry_after_max. Timed-out attempts get a smaller budget because each one
+    # already waited minutes.
+    retry_max_attempts: int = 10
+    retry_base_delay: float = 2.0
+    retry_max_delay: float = 10.0
+    retry_after_max: float = 900.0
+    retry_jitter: float = 0.2
+    retry_timeout_attempts: int = 3
+
     openrouter_api_key: str = ""
     nvidia_api_key: str = ""
 

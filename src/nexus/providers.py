@@ -3,14 +3,27 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 from dataclasses import dataclass, replace
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Awaitable, Callable
 
 import httpx
 
 from .config import CONFIG
 from .db import Database
+from .retry import RetryPolicy
+
+RetryCallback = Callable[[dict[str, Any]], Awaitable[None] | None]
+
+
+class _RetryRequest(Exception):
+    """Internal signal: close this response and retry after the given delay."""
+
+    def __init__(self, message: str, delay: float):
+        super().__init__(message)
+        self.message = message
+        self.delay = delay
 
 
 class ProviderError(RuntimeError):
@@ -215,9 +228,59 @@ def _headers(provider: ProviderSpec, key: str) -> dict[str, str]:
 
 
 class StreamClient:
-    def __init__(self, provider: ProviderSpec, key: str):
+    def __init__(
+        self,
+        provider: ProviderSpec,
+        key: str,
+        *,
+        policy: RetryPolicy | None = None,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ):
         self.provider = provider
         self.key = key
+        self.policy = policy or RetryPolicy.from_config()
+        self.transport = transport
+
+    async def _notify_retry(
+        self,
+        callback: RetryCallback | None,
+        attempt: int,
+        max_attempts: int,
+        delay: float,
+        message: str,
+    ) -> None:
+        if callback is None:
+            return
+        result = callback(
+            {
+                "type": "retry",
+                "attempt": attempt + 1,
+                "max_attempts": max_attempts,
+                "delay_ms": int(round(delay * 1000)),
+                "message": message,
+            }
+        )
+        if inspect.isawaitable(result):
+            await result
+
+    async def _wait(
+        self,
+        delay: float,
+        cancel: asyncio.Event | None,
+    ) -> bool:
+        """Sleep for ``delay`` seconds; return False if Stop was pressed."""
+        if cancel is not None and cancel.is_set():
+            return False
+        if delay <= 0:
+            return True
+        if cancel is None:
+            await asyncio.sleep(delay)
+            return True
+        try:
+            await asyncio.wait_for(cancel.wait(), timeout=delay)
+        except TimeoutError:
+            return True
+        return False
 
     async def stream(
         self,
@@ -227,6 +290,10 @@ class StreamClient:
         max_tokens: int | None = None,
         tool_choice: str | None = "auto",
         model_id: str | None = None,
+        *,
+        cancel: asyncio.Event | None = None,
+        on_retry: RetryCallback | None = None,
+        max_attempts: int | None = None,
     ) -> AsyncIterator[dict]:
         payload: dict[str, Any] = {
             "model": model_id or self.provider.model_id,
@@ -242,11 +309,19 @@ class StreamClient:
         timeout = httpx.Timeout(
             connect=20.0, read=CONFIG.request_timeout, write=60.0, pool=20.0
         )
+        attempts = max(1, max_attempts if max_attempts is not None else self.policy.max_attempts)
+        timeout_attempts = max(1, self.policy.timeout_attempts)
+        timeouts = 0
+        yielded = False
         last_error: Exception | None = None
 
-        for attempt in range(3):
+        for attempt in range(1, attempts + 1):
+            if cancel is not None and cancel.is_set():
+                return
             try:
-                async with httpx.AsyncClient(timeout=timeout) as client:
+                async with httpx.AsyncClient(
+                    timeout=timeout, transport=self.transport
+                ) as client:
                     request = client.build_request(
                         "POST",
                         f"{self.provider.base_url}/chat/completions",
@@ -258,18 +333,29 @@ class StreamClient:
                         if response.status_code >= 400:
                             body = (await response.aread()).decode("utf-8", "replace")
                             detail = _error_detail(body)
-                            if (
-                                response.status_code in {429, 500, 502, 503, 504}
-                                and attempt < 2
-                            ):
-                                await asyncio.sleep(1.5 * (attempt + 1))
-                                continue
-                            raise ProviderError(
+                            message = (
                                 f"{self.provider.label} returned HTTP "
                                 f"{response.status_code}: {detail}"
                             )
+                            if (
+                                not yielded
+                                and attempt < attempts
+                                and self.policy.should_retry(
+                                    response.status_code, body, response.headers
+                                )
+                            ):
+                                delay = self.policy.delay(
+                                    attempt - 1,
+                                    self.policy.retry_after_ms(response.headers),
+                                )
+                                raise _RetryRequest(message, delay)
+                            raise ProviderError(message)
 
+                        retry_message: str | None = None
+                        retry_delay = 0.0
                         async for line in response.aiter_lines():
+                            if cancel is not None and cancel.is_set():
+                                return
                             line = line.strip()
                             if not line or line.startswith(":"):
                                 continue
@@ -282,22 +368,100 @@ class StreamClient:
                                 chunk = json.loads(data)
                             except json.JSONDecodeError:
                                 continue
+                            stream_error = _stream_error(chunk)
+                            if stream_error is not None:
+                                status, detail = stream_error
+                                message = (
+                                    f"{self.provider.label} stream error: {detail}"
+                                )
+                                if (
+                                    not yielded
+                                    and attempt < attempts
+                                    and self.policy.should_retry(status, detail)
+                                ):
+                                    retry_message = message
+                                    retry_delay = self.policy.delay(
+                                        attempt - 1,
+                                        self.policy.retry_after_ms(response.headers),
+                                    )
+                                    break
+                                raise ProviderError(message)
+                            yielded = True
                             yield chunk
+
+                        if retry_message is not None:
+                            raise _RetryRequest(retry_message, retry_delay)
+                        return
                     finally:
                         await response.aclose()
+            except _RetryRequest as retry:
+                await self._notify_retry(
+                    on_retry,
+                    attempt,
+                    attempts,
+                    retry.delay,
+                    retry.message,
+                )
+                if not await self._wait(retry.delay, cancel):
                     return
+                continue
             except ProviderError:
                 raise
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 last_error = exc
-                if attempt < 2:
-                    await asyncio.sleep(1.5 * (attempt + 1))
-                    continue
-                raise ProviderError(
+                message = (
                     f"Could not reach {self.provider.label}: {exc}. Check your network."
-                ) from exc
+                )
+                if yielded:
+                    raise ProviderError(
+                        f"{self.provider.label} stream was interrupted after "
+                        f"partial output: {exc}"
+                    ) from exc
+                if isinstance(exc, httpx.TimeoutException):
+                    timeouts += 1
+                if attempt >= attempts or timeouts >= timeout_attempts:
+                    raise ProviderError(message) from exc
+                delay = self.policy.delay(attempt - 1)
+                await self._notify_retry(
+                    on_retry,
+                    attempt,
+                    attempts,
+                    delay,
+                    message,
+                )
+                if not await self._wait(delay, cancel):
+                    return
+                continue
 
         raise ProviderError(f"{self.provider.label} request failed: {last_error}")
+
+
+def _stream_error(chunk: dict) -> tuple[int, str] | None:
+    """Extract an error object delivered inside an otherwise-200 SSE stream."""
+    if not isinstance(chunk, dict) or "error" not in chunk:
+        return None
+    error = chunk.get("error")
+    if not error:
+        return None
+    if isinstance(error, dict):
+        message = str(
+            error.get("message") or error.get("detail") or error or "Provider error"
+        )[:600]
+        raw_status = error.get("status") or error.get("code") or error.get("type")
+        status = 0
+        if isinstance(raw_status, int):
+            status = raw_status
+        elif isinstance(raw_status, str) and raw_status.isdigit():
+            status = int(raw_status)
+        if status == 0:
+            lowered = message.lower()
+            if "429" in lowered or "rate limit" in lowered or "too many requests" in lowered:
+                status = 429
+            elif any(word in lowered for word in ("quota", "billing", "credit")):
+                status = 402
+        return status, message
+    return 0, str(error or "Provider error")[:600]
+
 
 
 def _error_detail(body: str) -> str:

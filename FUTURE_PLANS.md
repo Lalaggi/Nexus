@@ -3,7 +3,19 @@
 Deliberately deferred work. This is the canonical backlog for big features; mobile
 implementation detail for items 2 and 3 stays in `MOBILE_APP_PLANS.md`.
 
-Current focus: native PDF/image reading in `read_file` (implemented).
+Current focus: native PDF/image reading in `read_file` (implemented). Item 5
+(429/retry hardening) is now implemented; suggested next small win: item 3
+(mobile settings) or item 2 (mobile gestures).
+
+## Readiness snapshot
+
+| # | Item | Size | Risk | Best first slice |
+| --- | --- | --- | --- | --- |
+| 1 | Clarifying questions / `ask_questions` | Large (3–5 days) | Medium–high: run lifecycle, persistence, UI state | Backend question state machine + tool, then UI card |
+| 2 | Mobile gestures | Medium (1–2 days) | Medium: scroll/back-gesture conflicts | Left-edge open/close sidebar only |
+| 3 | Mobile settings redesign | Medium (2–3 days) | Low–medium: visual regressions | Responsive full-screen shell + top category chips |
+| 4 | Provider backend remake | XL (1–2 weeks, incremental) | High: provider quirks, metadata, picker | Adapter wrapper around today's client, then live `/models` cache |
+| 5 | 429/retry handling | Done | — | `src/nexus/retry.py` policy + tests, retry status event in the UI |
 
 ---
 
@@ -95,3 +107,82 @@ OpenRouter, NVIDIA NIM, SiliconFlow, and similar services is easy to use.
 **Files:** `src/nexus/providers.py`, `src/nexus/config.py`, `db.py` (`custom_models` /
 favorites), `routes/settings.py`, `web/src/components/SettingsDialog.tsx`, model picker
 in `App.tsx` / `Composer.tsx`.
+
+---
+
+## 5. Proper retry and rate-limit handling (429) — implemented
+
+Implemented in `src/nexus/retry.py`, `src/nexus/providers.py`, `src/nexus/agent.py`,
+and the web retry status line. The notes below are kept as design context.
+
+**Goal:** survive temporary rate limits and provider outages without failing a turn
+prematurely, honor the provider's `Retry-After`, and never duplicate text that was
+already shown to the user. Inspired by OpenCode's retry policy.
+
+**Current state and gaps:**
+- `StreamClient.stream` retries `429`, `500`, `502`, `503`, and `504` three times with
+  fixed `1.5 × attempt` sleeps, and transport failures with the same budget.
+- It ignores `Retry-After` / `retry-after-ms`, so free-tier limits that ask for 30–120
+  seconds still fail after roughly 4.5 seconds of waiting.
+- No jitter, no distinction between a temporary throttle and an exhausted quota or
+  billing limit, and no attempt/status visibility in the UI.
+- It sleeps inside the request generator without watching `RunState.cancel`, so Stop
+  cannot interrupt a long rate-limit wait.
+- A transport failure after some deltas have already been yielded is retried from the
+  start, which can duplicate partial text in the same assistant message.
+- Errors delivered inside an SSE stream (rather than as an HTTP status) are currently
+  ignored as ordinary chunks.
+
+**What OpenCode does (GitHub source):**
+- `packages/ai/src/route/executor.ts`: parses `retry-after-ms` and `retry-after`
+  (seconds or an HTTP date) from response headers and clamps the result.
+- `packages/ai/src/schema/errors.ts`: classifies `429` as retryable `RateLimit`, treats
+  `402`/quota-exhausted messages as terminal `QuotaExceeded`, honors `x-should-retry`,
+  and exposes the provider delay as `retryAfterMs`.
+- `packages/core/src/model-retry.ts`: jittered exponential backoff from 2s, capped at
+  10s per gap for 10 retries; each gap is `max(backoff, retryAfter)`; provider-requested
+  delays are capped at 15 minutes. Unreachable hosts get a separate one-hour budget, and
+  timeouts are capped at three attempts so a dead provider cannot hold a call forever.
+- `packages/core/src/session/runner/retry.ts`: publishes a retry-scheduled event with
+  attempt, delay, and error before sleeping, so the client can show what is happening
+  and Stop can interrupt the wait.
+
+**Shape:**
+- Add `src/nexus/retry.py` with pure, testable helpers:
+  - `parse_retry_after_ms(headers)`: `retry-after-ms`, numeric `retry-after`, or HTTP
+    date; clamp to `0..retry_after_max`.
+  - `is_retryable(status, body, headers)`: `408`, `409`, `425`, `429`, `500`, `502`,
+    `503`, `504`, and `529`; honor `x-should-retry`; stop on auth/invalid-request and
+    obvious quota or billing exhaustion.
+  - `next_delay(attempt, retry_after_ms)`: jittered exponential base 2s, cap 10s per
+    gap, raised to `retry_after_ms` when the provider asks for longer.
+- Add settings to `config.py`: `retry_max_attempts=10`, `retry_base_delay=2.0`,
+  `retry_max_delay=10.0`, `retry_after_max=900.0`, `retry_jitter=0.2`, and a lower
+  `retry_timeout_attempts=3`.
+- Refactor `StreamClient.stream` to use the policy, and pass `RunState.cancel` (or a
+  cancellation callback) so a wait ends immediately when the user presses Stop.
+- Only retry transparently before the first chunk of a request has been yielded. Once
+  text or tool-call deltas exist, fail with a clear `ProviderError` and leave the
+  message/regenerate path intact. (A later enhancement can restart the whole step on a
+  new assistant message, as OpenCode does.)
+- Emit a new SSE event before sleeping:
+  `{"type": "retry", "attempt": 3, "max_attempts": 10, "delay_ms": 8000, "message": "..."}`.
+  Pass an `on_retry` callback from `agent.py` to `StreamClient`; `App.tsx` renders a
+  compact status line on the assistant message and clears it on the next delta/done.
+- Add tests in `tests/test_retry.py` for header parsing, HTTP-date handling, delay caps
+  and jitter bounds, quota/terminal classification, no retry after partial output, and
+  the retry event. Extract the response status handling enough to inject a fake
+  transport, or test the pure policy first and keep `StreamClient` thin.
+
+**Files:** `src/nexus/providers.py`, `src/nexus/config.py`, `src/nexus/agent.py`,
+`src/nexus/routes/chats.py` (event plumbing only, if needed), `web/src/App.tsx`,
+`web/src/types.ts`, `web/src/components/MessageView.tsx`, `tests/test_retry.py`.
+
+**Acceptance criteria:**
+- A `429` with `Retry-After: 30` waits about 30 seconds instead of failing after 4.5s.
+- A `429` with no header backs off exponentially with jitter, up to the attempt limit.
+- Auth errors, invalid requests, and obvious quota/billing exhaustion fail immediately
+  with the provider's message.
+- Stop interrupts a retry wait within about a second.
+- No request is retried after any output has been streamed to the client.
+- The UI shows attempt and delay while waiting, then resumes normally.
