@@ -133,13 +133,24 @@ export interface FileItem {
   mime: string;
 }
 
+export type ProviderId = 'nim' | 'openrouter';
+
 export interface ProviderInfo {
-  id: 'nim' | 'openrouter';
+  id: ProviderId;
   label: string;
-  model_id: string;
   available: boolean;
   key_hint: string;
   docs: string;
+}
+
+export interface CatalogModel {
+  id: string;            // catalog row id
+  provider: ProviderId;
+  model_id: string;      // id sent to the provider API
+  name: string;          // display name
+  enabled: boolean;
+  is_default: boolean;
+  source: 'default' | 'discovered' | 'custom';
 }
 
 export interface SandboxStatus {
@@ -155,8 +166,8 @@ export interface SandboxStatus {
 export interface SettingsSnapshot {
   provider: 'auto' | 'nim' | 'openrouter';
   providers: ProviderInfo[];
-  model: { id: string; name: string; subtitle: string; description: string };
-  models: Array<{ id: string; name: string }>;
+  models: CatalogModel[];
+  default_model: CatalogModel | null;
   custom_models: Array<{ id: string; name: string; model_id: string }>;
   keys: {
     nim: { set: boolean; hint: string };

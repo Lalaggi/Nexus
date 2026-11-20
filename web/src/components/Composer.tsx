@@ -18,7 +18,6 @@ export default function Composer({
   attachments,
   uploading,
   streaming,
-  providerName,
   providerReady,
   models,
   selectedModelId,
@@ -37,7 +36,6 @@ export default function Composer({
   attachments: Attachment[];
   uploading: boolean;
   streaming: boolean;
-  providerName: string;
   providerReady: boolean;
   models: Array<{ id: string; name: string }>;
   selectedModelId: string;
@@ -170,7 +168,6 @@ export default function Composer({
                   {model.name}
                 </option>
               ))}
-              <option value="custom">Custom model ID (set in Settings → Provider)</option>
             </select>
             {providerReady ? (
               <span className="model-status dot" />

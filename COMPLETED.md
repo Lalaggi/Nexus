@@ -37,6 +37,23 @@ Every edit or regenerate appends a new version to a message instead of overwriti
 - User notes: `note_list` / `note_get` / `note_set` / `note_delete` tools + `/api/notes` CRUD endpoints. Notes are user-level (not per-chat), key/value with validation (lowercase keys, max 60-char key, max 1000-char value).
 - Notes appear in the system prompt and are referenced only when genuinely relevant.
 
+### Model catalog ✅
+- Model-agnostic provider backend: any model on NVIDIA NIM or OpenRouter can be used; the hardcoded Nemotron registry is replaced by a database-backed `model_catalog` table (`provider`, `model_id`, `name`, `enabled`, `is_default`, `source`).
+- Nemotron 3.5 Super VL seeded as enabled + default on NIM and enabled on OpenRouter (works out of the box with either key).
+- `GET /api/models/catalog`, `POST /api/models/catalog/sync` (OpenRouter `/models` fetch), `PATCH .../toggle`, `PATCH .../default`, `DELETE .../catalog/{id}` endpoints.
+- `GET /api/settings` returns the full catalog plus `default_model`; `POST /api/settings/test` uses the provider's default enabled model.
+- `resolve_provider(db, provider, model_id)` resolves an explicit provider + API model id to a `ProviderSpec` and key.
+- Chats persist both `model` and `provider`; composer dropdown shows only enabled models.
+- Frontend selector (flat list, no provider grouping): default model at top, enabled models alphabetical beneath, "Show all"/"Hide all models" button toggles disabled models alphabetical. Search auto-includes disabled matches. Pretty display names shown, raw API model IDs never renamed, provider label "NVIDIA" (not "NIM"), filled star for default (enabled models only), Material 3 toggle switches. Only Nemotron 3.5 Super VL enabled by default on NIM and OpenRouter; all discovered models added disabled.
+- Model catalog panel includes manual "Add model" form for providers without a public model list (e.g. NIM).
+- Provider settings panel reduced to just the two API key fields (NIM + OpenRouter); provider cards, description, default model ID override, custom model section, and test connection removed — all covered by the model catalog.
+- Composer model dropdown: removed stale "Custom model ID" entry.
+- Material 3 styling throughout: switches use colorOutline/colorPrimaryContainer track and colorOnSurface/colorPrimary handle per m3 specs (less round thumb, 18px); filled text inputs use surface-container-low with outline-variant border and primary focus state; consistent 40px height density.
+- Removed redundant provider-chip from topbar (showed "Nemotron · OpenRouter", duplicated catalog provider badge).
+- Removed hardcoded "Nemotron · provider" label from Sidebar footer (showed misinformation — always said Nemotron regardless of selected model).
+- Removed unused `providerName` prop from Composer.
+- Catalog cards use 20px border-radius (matching settings-section), not fully round (shape-full). Input boxes, dropdowns, buttons, and toggles stay round.
+
 ### Settings redesign ✅
 - Collapsible category cards (Provider, Personalisation, Stats) instead of swapping whole panels.
 - Mobile bottom sheet (≤900px) instead of centered modal; desktop/tablet two-column sidebar preserved (≥901px).

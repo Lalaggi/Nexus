@@ -63,22 +63,6 @@ import { useDrag } from './useGesture';
 
 type Boot = 'loading' | 'login' | 'ready' | 'error';
 
-function providerLabel(settings: SettingsSnapshot | null): string {
-  if (!settings) return 'Nemotron';
-  const available = settings.providers.filter((p) => p.available);
-  if (settings.provider === 'nim') {
-    return available.some((p) => p.id === 'nim') ? 'Nemotron · NIM' : 'Nemotron · no key';
-  }
-  if (settings.provider === 'openrouter') {
-    return available.some((p) => p.id === 'openrouter')
-      ? 'Nemotron · OpenRouter'
-      : 'Nemotron · no key';
-  }
-  if (available.some((p) => p.id === 'nim')) return 'Nemotron · NIM';
-  if (available.some((p) => p.id === 'openrouter')) return 'Nemotron · OpenRouter';
-  return 'Nemotron · no key';
-}
-
 export default function App() {
   const [boot, setBoot] = useState<Boot>('loading');
   const [bootError, setBootError] = useState('');
@@ -116,11 +100,21 @@ export default function App() {
 
   const availableModels = useMemo(() => {
     if (!settings) return [];
-    const models = [...settings.models];
-    // Show every custom model added in Settings → Provider in the composer
-    // selector, not just the one currently set as custom_model_id.
+    // Only enabled models appear in the composer picker; the default model is
+    // listed first, then the rest alphabetically by pretty name.
+    const enabled = settings.models.filter((m) => m.enabled);
+    const defaultModel = settings.default_model;
+    const ids = new Set(enabled.map((m) => m.model_id));
+    const models: Array<{ id: string; name: string }> = [];
+    if (defaultModel && enabled.some((m) => m.model_id === defaultModel.model_id)) {
+      models.push({ id: defaultModel.model_id, name: defaultModel.name });
+    }
+    for (const m of enabled.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (m.model_id === defaultModel?.model_id) continue;
+      models.push({ id: m.model_id, name: m.name });
+    }
     for (const custom of settings.custom_models) {
-      if (!models.find((m) => m.id === custom.model_id)) {
+      if (!ids.has(custom.model_id)) {
         models.push({ id: custom.model_id, name: custom.name });
       }
     }
@@ -313,7 +307,7 @@ export default function App() {
     setDraft('');
     setDraftAttachments([]);
     setEditingMessageId(null);
-    setSelectedModelId(settings?.custom_model_id || settings?.model.id || '');
+    setSelectedModelId(settings?.default_model?.model_id || '');
     setPanel(null);
     setPreview(null);
     setFiles([]);
@@ -340,7 +334,7 @@ export default function App() {
         );
         setTasks(data.tasks);
         setGoal(data.chat.goal || '');
-        setSelectedModelId(data.chat.model || settings?.custom_model_id || settings?.model.id || '');
+        setSelectedModelId(data.chat.model || settings?.default_model?.model_id || '');
         setPreview(null);
         setFiles([]);
         setEditingMessageId(null);
@@ -368,7 +362,7 @@ export default function App() {
         api<Chat[]>('/api/chats'),
       ]);
       setSettings(snapshot);
-      setSelectedModelId(snapshot.custom_model_id || snapshot.model.id || '');
+      setSelectedModelId(snapshot.default_model?.model_id || '');
       setChats(list);
       setBoot('ready');
       const id = new URLSearchParams(window.location.search).get('c');
@@ -758,10 +752,12 @@ export default function App() {
     setMessages((previous) => [...previous, optimistic]);
     setDraft('');
     setDraftAttachments([]);
+    const selected = settings?.models.find((m) => m.model_id === selectedModelId);
     startStream(chat.id, `/api/chats/${chat.id}/messages`, 'POST', {
       content,
       attachment_ids: attachments.map((attachment) => attachment.id),
       model: selectedModelId,
+      provider: selected?.provider ?? settings?.provider ?? 'auto',
     }, localUserId);
   };
 
@@ -1009,10 +1005,6 @@ export default function App() {
             </div>
           </div>
           <div className="topbar-actions">
-            <span className={`provider-chip ${providerReady ? 'ready' : ''}`}>
-              <i className="dot" />
-              {providerReady ? providerLabel(settings).replace('Nemotron · ', '') : 'No key'}
-            </span>
             <button
               type="button"
               className={`icon-btn ${panel === 'tasks' ? 'is-active' : ''}`}
@@ -1066,15 +1058,10 @@ export default function App() {
                 attachments={draftAttachments}
                 uploading={uploading}
                 streaming={streaming}
-                providerName={providerLabel(settings)}
                 providerReady={providerReady}
                 models={availableModels}
                 selectedModelId={selectedModelId}
                 onModelChange={(modelId) => {
-                  if (modelId === 'custom') {
-                    setSettingsOpen(true);
-                    return;
-                  }
                   setSelectedModelId(modelId);
                 }}
                 onSend={() => void send()}
@@ -1105,16 +1092,10 @@ export default function App() {
               attachments={draftAttachments}
               uploading={uploading}
               streaming={streaming}
-              providerName={providerLabel(settings)}
               providerReady={providerReady}
               models={availableModels}
               selectedModelId={selectedModelId}
               onModelChange={(modelId) => {
-                if (modelId === 'custom') {
-                  // Open settings to set custom model ID
-                  setSettingsOpen(true);
-                  return;
-                }
                 setSelectedModelId(modelId);
               }}
               onSend={() => void send()}

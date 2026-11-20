@@ -118,6 +118,21 @@ CREATE TABLE IF NOT EXISTS custom_models (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_custom_models_model_id ON custom_models(model_id);
+
+CREATE TABLE IF NOT EXISTS model_catalog (
+    id TEXT PRIMARY KEY,
+    provider TEXT NOT NULL,
+    model_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 0,
+    is_default INTEGER NOT NULL DEFAULT 0,
+    source TEXT NOT NULL DEFAULT 'discovered',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(provider, model_id)
+);
+CREATE INDEX IF NOT EXISTS idx_model_catalog_provider ON model_catalog(provider);
+CREATE INDEX IF NOT EXISTS idx_model_catalog_enabled ON model_catalog(enabled);
 """
 
 
@@ -186,6 +201,52 @@ class Database:
         self._conn = conn
         await self._migrate_message_versions()
         await self._encrypt_plaintext()
+        await self._seed_model_catalog()
+
+    async def _seed_model_catalog(self) -> None:
+        """Seed the model catalog with sensible defaults when empty.
+
+        Nemotron 3.5 Super VL is enabled and set as default by default on both
+        NIM and OpenRouter so a fresh instance has a working model out of the
+        box without any sync step.
+        """
+        count = await self._fetchone(
+            "SELECT COUNT(*) AS n FROM model_catalog"
+        )
+        if count and count["n"] > 0:
+            return
+        stamp = now()
+        entries = [
+            (
+                new_id("mc"),
+                "nim",
+                "nvidia/nemotron-3.5-super-vl-120b-a12b",
+                "Nemotron 3.5 Super VL",
+                1,
+                1,
+                "default",
+                stamp,
+                stamp,
+            ),
+            (
+                new_id("mc"),
+                "openrouter",
+                "nvidia/nemotron-3.5-super-vl:free",
+                "Nemotron 3.5 Super VL (free)",
+                1,
+                0,
+                "default",
+                stamp,
+                stamp,
+            ),
+        ]
+        await self.conn.executemany(
+            """INSERT INTO model_catalog
+               (id, provider, model_id, name, enabled, is_default, source, created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            entries,
+        )
+        await self.conn.commit()
 
     async def _migrate_message_versions(self) -> None:
         """Give every pre-versioning message a first version and reply links.
@@ -348,12 +409,14 @@ class Database:
             row["goal"] = self._decrypt(row.get("goal"))
         return rows
 
-    async def create_chat(self, title: str, goal: str = "", model: str = "nemotron-3.5-super-vl") -> dict:
+    async def create_chat(
+        self, title: str, goal: str = "", model: str = "nemotron-3.5-super-vl", provider: str = "auto"
+    ) -> dict:
         chat_id = new_id("c")
         stamp = now()
         await self.conn.execute(
             "INSERT INTO chats (id,title,goal,model,provider,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
-            (chat_id, self._encrypt(title), self._encrypt(goal), model, "auto", stamp, stamp),
+            (chat_id, self._encrypt(title), self._encrypt(goal), model, provider, stamp, stamp),
         )
         await self.conn.commit()
         return await self.get_chat(chat_id)  # type: ignore[return-value]
@@ -951,5 +1014,123 @@ class Database:
     async def delete_custom_model(self, model_id: str) -> None:
         await self.conn.execute(
             "DELETE FROM custom_models WHERE model_id = ?", (model_id,)
+        )
+        await self.conn.commit()
+
+    # ---------------------------------------------------------------- model catalog
+    async def list_model_catalog(
+        self, enabled_only: bool = False
+    ) -> list[dict]:
+        if enabled_only:
+            return await self._fetchall(
+                "SELECT * FROM model_catalog WHERE enabled = 1 "
+                "ORDER BY is_default DESC, provider ASC, name ASC"
+            )
+        return await self._fetchall(
+            "SELECT * FROM model_catalog "
+            "ORDER BY is_default DESC, enabled DESC, provider ASC, name ASC"
+        )
+
+    async def get_model_catalog_entry(self, catalog_id: str) -> dict | None:
+        return await self._fetchone(
+            "SELECT * FROM model_catalog WHERE id = ?", (catalog_id,)
+        )
+
+    async def get_default_model_catalog_entry(self) -> dict | None:
+        return await self._fetchone(
+            "SELECT * FROM model_catalog WHERE enabled = 1 AND is_default = 1 "
+            "ORDER BY provider ASC LIMIT 1"
+        )
+
+    async def get_enabled_model_id_for_provider(self, provider: str) -> str | None:
+        row = await self._fetchone(
+            "SELECT model_id FROM model_catalog WHERE provider = ? AND enabled = 1 "
+            "ORDER BY is_default DESC LIMIT 1",
+            (provider,),
+        )
+        return row["model_id"] if row else None
+
+    async def get_model_catalog_entry_by_model(
+        self, provider: str, model_id: str
+    ) -> dict | None:
+        return await self._fetchone(
+            "SELECT * FROM model_catalog WHERE provider = ? AND model_id = ?",
+            (provider, model_id),
+        )
+
+    async def upsert_model_catalog_entry(
+        self,
+        provider: str,
+        model_id: str,
+        name: str,
+        *,
+        enabled: int | None = None,
+        is_default: int | None = None,
+        source: str = "discovered",
+    ) -> dict:
+        stamp = now()
+        existing = await self.get_model_catalog_entry_by_model(provider, model_id)
+        if existing:
+            updates = []
+            params: list[Any] = []
+            if name is not None:
+                updates.append("name = ?")
+                params.append(name)
+            if enabled is not None:
+                updates.append("enabled = ?")
+                params.append(enabled)
+            if is_default is not None:
+                updates.append("is_default = ?")
+                params.append(is_default)
+            updates.append("updated_at = ?")
+            params.append(stamp)
+            params.append(existing["id"])
+            await self.conn.execute(
+                f"UPDATE model_catalog SET {', '.join(updates)} WHERE id = ?",
+                tuple(params),
+            )
+            await self.conn.commit()
+            return await self.get_model_catalog_entry(existing["id"])
+        await self.conn.execute(
+            """INSERT INTO model_catalog
+               (id, provider, model_id, name, enabled, is_default, source, created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (
+                new_id("mc"),
+                provider,
+                model_id,
+                name,
+                0 if enabled is None else enabled,
+                0 if is_default is None else is_default,
+                source,
+                stamp,
+                stamp,
+            ),
+        )
+        await self.conn.commit()
+        entry = await self.get_model_catalog_entry_by_model(provider, model_id)
+        return entry  # type: ignore[return-value]
+
+    async def set_model_catalog_enabled(self, catalog_id: str, enabled: bool) -> None:
+        await self.conn.execute(
+            "UPDATE model_catalog SET enabled = ?, updated_at = ? WHERE id = ?",
+            (1 if enabled else 0, now(), catalog_id),
+        )
+        await self.conn.commit()
+
+    async def set_model_catalog_default(self, catalog_id: str) -> None:
+        """Make one entry the default and clear the default flag on all others."""
+        await self.conn.execute(
+            "UPDATE model_catalog SET is_default = 0"
+        )
+        await self.conn.execute(
+            "UPDATE model_catalog SET is_default = 1, updated_at = ? WHERE id = ?",
+            (now(), catalog_id),
+        )
+        await self.conn.commit()
+
+    async def delete_model_catalog_entry(self, catalog_id: str) -> None:
+        await self.conn.execute(
+            "DELETE FROM model_catalog WHERE id = ?", (catalog_id,)
         )
         await self.conn.commit()

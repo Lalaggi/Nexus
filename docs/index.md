@@ -1,6 +1,6 @@
 # Documentation
 
-Welcome to the Nexus documentation. Nexus is a self-hosted, single-user ChatGPT replacement built around **NVIDIA Nemotron 3.5 VL Super**.
+Welcome to the Nexus documentation. Nexus is a self-hosted, single-user ChatGPT replacement that works with any model on NVIDIA NIM or OpenRouter (**Nemotron 3.5 VL Super** enabled by default).
 
 ## Getting started
 

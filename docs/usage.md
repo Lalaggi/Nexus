@@ -4,7 +4,11 @@ Nexus is a streaming chat interface backed by a tool-using model. This guide cov
 
 ## The model
 
-The curated model is **Nemotron 3.5 VL Super** (NVIDIA, 120B vision-language, 1M-token context, native tool calling). It is automatically preferred on NVIDIA NIM, falling back to OpenRouter. Custom models (any OpenAI-compatible model ID) can be added in Settings and route through OpenRouter.
+Nexus is model-agnostic: any model on NVIDIA NIM or OpenRouter can be used. Models live in a searchable catalog in Settings; **Nemotron 3.5 VL Super** (NVIDIA, 120B vision-language, 1M-token context, native tool calling) is **enabled and set as default by default**, so a fresh instance works out of the box with either a NIM key or an OpenRouter key.
+
+In Settings you can search the catalog by name or model ID, enable the models you want to use, and mark one as the default (filled star). Models are shown in a flat list: the default model is always at the top, enabled models are alphabetical beneath it, and a "Show all models" button reveals disabled models in alphabetical order — regardless of which provider they come from. The pretty model name is shown in each row, and the raw API model ID is never renamed. Only Nemotron 3.5 Super VL is enabled by default (on both NIM and OpenRouter); every other discovered model is added disabled. Only enabled models appear in the message composer dropdown, and clicking the filled star makes that model the default. Custom model IDs can be added manually for providers without a public model list (e.g. NIM).
+
+The default provider preference (`auto`, `nim`, or `openrouter`) still applies: `auto` prefers NIM then OpenRouter.
 
 ## Built-in tools
 
@@ -54,4 +58,4 @@ Every edit or regenerate appends a new version to a message instead of overwriti
 
 ## Settings
 
-Settings live in the database (provider, API keys, user name, temperature, custom instructions, custom model ID, custom models) and are editable in the Settings dialog. Environment variables provide defaults; database values override them per-instance.
+Settings live in the database (provider, API keys, user name, temperature, custom instructions, custom model ID, custom models, and the model catalog) and are editable in the Settings dialog. Environment variables provide defaults; database values override them per-instance.

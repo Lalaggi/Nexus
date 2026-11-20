@@ -43,18 +43,21 @@ def db_of(request: Request) -> Database:
 class ChatCreate(BaseModel):
     title: str | None = None
     model: str | None = None
+    provider: str | None = None
 
 
 class ChatPatch(BaseModel):
     title: str | None = None
     goal: str | None = None
     model: str | None = None
+    provider: str | None = None
 
 
 class SendMessage(BaseModel):
     content: str = ""
     attachment_ids: list[str] = Field(default_factory=list)
     model: str | None = None
+    provider: str | None = None
 
 
 class TaskPatch(BaseModel):
@@ -81,7 +84,8 @@ async def create_chat(request: Request, body: ChatCreate | None = None) -> dict:
     db = db_of(request)
     title = ((body.title if body else None) or "New chat").strip()[:120]
     model = (body.model if body else None) or DEFAULT_MODEL
-    return await db.create_chat(title, model=model)
+    provider = (body.provider if body else None) or "auto"
+    return await db.create_chat(title, model=model, provider=provider)
 
 
 @router.get("/chats/{chat_id}")
@@ -254,11 +258,15 @@ async def send_message(request: Request, chat_id: str, body: SendMessage):
 
     # Remember the model choice on the chat so it persists across turns.
     selected_model = body.model or chat.get("model") or DEFAULT_MODEL
-    if selected_model != chat.get("model"):
-        await db.update_chat(chat_id, model=selected_model)
+    selected_provider = (body.provider or chat.get("provider") or "").strip().lower()
+    if selected_provider not in {"nim", "openrouter"}:
+        default_entry = await db.get_default_model_catalog_entry()
+        selected_provider = (default_entry or {}).get("provider") or "nim"
+    if selected_model != chat.get("model") or selected_provider != chat.get("provider"):
+        await db.update_chat(chat_id, model=selected_model, provider=selected_provider)
 
     try:
-        resolved = await resolve_provider(db, selected_model, chat.get("provider"))
+        resolved = await resolve_provider(db, selected_provider, selected_model)
     except ProviderError as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -342,13 +350,23 @@ async def regenerate(request: Request, chat_id: str):
             status="streaming",
         )
 
+    selected_model = chat.get("model") or DEFAULT_MODEL
+    selected_provider = (chat.get("provider") or "").strip().lower()
+    if selected_provider not in {"nim", "openrouter"}:
+        default_entry = await db.get_default_model_catalog_entry()
+        selected_provider = (default_entry or {}).get("provider") or "nim"
+    try:
+        await resolve_provider(db, selected_provider, selected_model)
+    except ProviderError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
     state = start_run(chat_id)
     return _sse_stream(
         request,
         chat_id,
         assistant_message["id"],
         state,
-        model_id=chat.get("model") or DEFAULT_MODEL,
+        model_id=selected_model,
     )
 
 
@@ -467,27 +485,19 @@ async def stop_chat(chat_id: str):
 
 @router.get("/models")
 async def models(request: Request) -> dict:
-    from ..providers import MODELS, api_keys
-
     db = db_of(request)
-    keys = await api_keys(db)
+    catalog = await db.list_model_catalog()
     return {
         "models": [
             {
-                "id": model.id,
-                "name": model.name,
-                "subtitle": model.subtitle,
-                "description": model.description,
-                "providers": [
-                    {
-                        "id": spec.id,
-                        "label": spec.label,
-                        "model_id": spec.model_id,
-                        "available": bool(keys.get(spec.id)),
-                    }
-                    for spec in model.providers.values()
-                ],
+                "id": row["id"],
+                "provider": row["provider"],
+                "model_id": row["model_id"],
+                "name": row["name"],
+                "enabled": bool(row["enabled"]),
+                "is_default": bool(row["is_default"]),
+                "source": row["source"],
             }
-            for model in MODELS
+            for row in catalog
         ]
     }

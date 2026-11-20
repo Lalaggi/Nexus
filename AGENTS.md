@@ -1,10 +1,10 @@
 # AGENTS.md — Nexus
 
 This file orients agents working on **Nexus**, a self-hosted, single-user
-ChatGPT replacement built around **NVIDIA Nemotron 3.5 VL Super** (NIM,
-falling back to OpenRouter). It streams reasoning, calls tools, searches the
-web through a local SearXNG instance, and gives the model a disposable Linux
-sandbox for Python, git, curl, and file output.
+ChatGPT replacement that works with any model on NVIDIA NIM or OpenRouter
+(Nemotron 3.5 VL Super is enabled by default). It streams reasoning, calls
+tools, searches the web through a local SearXNG instance, and gives the model
+a disposable Linux sandbox for Python, git, curl, and file output.
 
 Keep this file current when you change user-facing behavior, commands, or the
 codebase layout.
@@ -64,14 +64,14 @@ React UI (web/src)  <== HTTP/SSE /api ==>  FastAPI backend (src/nexus)
 | `db.py` | SQLite persistence (aiosqlite), schema, migrations, encryption |
 | `crypto.py` | Fernet at-rest encryption for sensitive DB fields |
 | `agent.py` | Streaming tool-use loop: context building, tool calling, SSE emission, title generation |
-| `providers.py` | Model registry (Nemotron), provider resolution, OpenAI-compatible streaming client, retry |
+| `providers.py` | Model catalog routing + provider resolution, OpenAI-compatible streaming client, retry |
 | `retry.py` | `RetryPolicy`, `parse_retry_after_ms`, `is_retryable`, `next_delay` |
 | `prompt.py` | System prompt |
 | `media.py` | Render images/PDF pages as native visual content |
 | `routes/chats.py` | Chat, message, task, version, SSE-stream endpoints |
 | `routes/files.py` | Upload handling and read-only file serving |
 | `routes/notes.py` | User notes CRUD |
-| `routes/settings.py` | Settings, health, auth, custom models |
+| `routes/settings.py` | Settings, health, auth, model catalog, custom models |
 | `tools/base.py` | Tool registry, `Tool`, `ToolContext`, `ToolResult` |
 | `tools/files.py` | `write_file`, `read_file`, `list_files` |
 | `tools/sandbox.py` | Isolated Podman container execution |
@@ -108,7 +108,7 @@ React + TypeScript + Vite, packaged with Capacitor for Android
 
 - SQLite with WAL journal, foreign keys, `secure_delete`. Tables: `chats`,
   `messages`, `message_versions`, `tasks`, `uploads`, `settings`, `user_notes`,
-  `custom_models`. Sensitive columns are encrypted at rest with Fernet.
+  `custom_models`, `model_catalog`. Sensitive columns are encrypted at rest with Fernet.
 - Messages are versioned (`messages.active_version_id` → `message_versions`).
   Edits/regenerates append versions; `reply_to_version_id` links an assistant
   reply to the user version it answered, so switching either side of an edited

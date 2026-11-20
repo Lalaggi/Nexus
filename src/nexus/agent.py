@@ -30,6 +30,7 @@ from .config import CONFIG
 from .db import Database
 from .prompt import system_prompt
 from .providers import (
+    DEFAULT_MODEL,
     ProviderError,
     StreamClient,
     extract_delta,
@@ -342,7 +343,13 @@ async def run_turn(
         chat = await db.get_chat(chat_id)
         if chat is None:
             raise ProviderError("This conversation no longer exists.")
-        resolved = await resolve_provider(db, model_id or chat.get("model"), chat.get("provider"))
+        selected_provider = (chat.get("provider") or "").strip().lower()
+        if selected_provider not in {"nim", "openrouter"}:
+            default_entry = await db.get_default_model_catalog_entry()
+            selected_provider = (default_entry or {}).get("provider") or "nim"
+        resolved = await resolve_provider(
+            db, selected_provider, model_id or chat.get("model") or DEFAULT_MODEL
+        )
         history = await build_context(db, chat_id, {assistant_message_id})
         user_notes = await db.list_notes()
         custom_instructions = await db.get_setting("custom_instructions", "")

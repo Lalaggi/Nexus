@@ -15,7 +15,7 @@ implemented below; suggested next: item 4 (provider backend remake).
 | 1 | Clarifying questions / `ask_questions` | Large (3–5 days) | Medium–high: run lifecycle, persistence, UI state | Backend question state machine + tool, then UI card |
 | 2 | Mobile gestures — Done | — | — | Left-edge open/close sidebar only |
 | 3 | Mobile settings redesign — Done | — | — | Responsive full-screen shell + top category chips |
-| 4 | Provider backend remake | XL (1–2 weeks, incremental) | High: provider quirks, metadata, picker | Adapter wrapper around today's client, then live `/models` cache |
+| 4 | Provider backend remake | Done | High: provider quirks, metadata, picker | Model catalog DB table + catalog endpoints done; SettingsDialog OpenCode-style picker + Composer filter done |
 | 5 | 429/retry handling | Done | — | `src/nexus/retry.py` policy + tests, retry status event in the UI |
 | 6 | Message editing with version history | Done | — | Version column/table + a "switch version" control on one assistant message |
 

@@ -1,6 +1,6 @@
 # Configuration
 
-All Nexus settings use the `ASSISTANT_` prefix and are read from `.env` (or the environment). Copy `.env.example` to `.env` and fill in what you use. All settings are optional except at least one provider key.
+All Nexus settings use the `ASSISTANT_` prefix and are read from `.env` (or the environment). Copy `.env.example` to `.env` and fill in what you use. All settings are optional except at least one provider key. Available models are managed in the model catalog (database-backed) rather than environment variables; Nemotron 3.5 Super VL is seeded as enabled + default on NIM and enabled on OpenRouter.
 
 Settings are loaded by [`src/nexus/config.py`](../src/nexus/config.py) using pydantic-settings.
 

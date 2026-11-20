@@ -7,16 +7,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 ## [Unreleased]
 
 ### Added
-- None yet — see [TODO.md](TODO.md) for the planned backlog.
+- Model catalog (`model_catalog` table) so any model on NVIDIA NIM or OpenRouter can be used; Nemotron 3.5 Super VL seeded as enabled + default on NIM and enabled on OpenRouter.
+- `GET /api/models/catalog`, `POST /api/models/catalog/sync` (OpenRouter `/models`), `PATCH /api/models/catalog/{id}/toggle`, `PATCH /api/models/catalog/{id}/default`, `DELETE /api/models/catalog/{id}`.
+- `GET /api/settings` returns the full catalog plus `default_model`; `POST /api/settings/test` uses the provider's default enabled model.
 
 ### Changed
-- None.
+- `resolve_provider` now takes an explicit provider + API model id; the hardcoded Nemotron registry (`CuratedModel`/`MODELS`) is removed.
+- Chats persist both `model` and `provider`; composer dropdown shows only enabled models.
+- Settings panel now manages the model catalog (search, enable, default star) instead of a single curated model.
 
 ### Fixed
 - None.
 
 ### Removed
-- None.
+- Hardcoded curated model registry in `providers.py`.
 
 ## [0.1.0] — 2026-11-20
 
