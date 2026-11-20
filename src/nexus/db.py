@@ -1,4 +1,17 @@
 """SQLite persistence. Small, single-user, and deliberately boring."""
+# Copyright (C) 2026 Ellie Wells <elilovescomputers@gmail.com>
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 from __future__ import annotations
 
@@ -38,9 +51,29 @@ CREATE TABLE IF NOT EXISTS messages (
     attachments TEXT NOT NULL DEFAULT '[]',
     duration_ms INTEGER NOT NULL DEFAULT 0,
     seq INTEGER NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    active_version_id TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_messages_chat ON messages(chat_id, seq);
+
+CREATE TABLE IF NOT EXISTS message_versions (
+    id TEXT PRIMARY KEY,
+    message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL,
+    content TEXT NOT NULL DEFAULT '',
+    reasoning TEXT NOT NULL DEFAULT '',
+    tool_events TEXT NOT NULL DEFAULT '[]',
+    attachments TEXT NOT NULL DEFAULT '[]',
+    duration_ms INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'complete',
+    source TEXT NOT NULL DEFAULT 'original',
+    reply_to_version_id TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_message_versions_number
+    ON message_versions(message_id, version);
+CREATE INDEX IF NOT EXISTS idx_message_versions_message
+    ON message_versions(message_id);
 
 CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
@@ -142,9 +175,78 @@ class Database:
             await conn.execute(
                 "ALTER TABLE messages ADD COLUMN duration_ms INTEGER NOT NULL DEFAULT 0"
             )
+        # Message editing and regeneration keep every version. Older databases
+        # get a single version for each existing message, plus links between an
+        # assistant reply and the user version it answered.
+        if "active_version_id" not in columns:
+            await conn.execute(
+                "ALTER TABLE messages ADD COLUMN active_version_id TEXT NOT NULL DEFAULT ''"
+            )
         await conn.commit()
         self._conn = conn
+        await self._migrate_message_versions()
         await self._encrypt_plaintext()
+
+    async def _migrate_message_versions(self) -> None:
+        """Give every pre-versioning message a first version and reply links.
+
+        This is idempotent: messages that already point at an active version are
+        skipped, and empty reply links are only filled once a preceding user
+        version exists.
+        """
+        rows = await self._fetchall(
+            "SELECT * FROM messages WHERE active_version_id IS NULL OR active_version_id = ''"
+            " ORDER BY chat_id ASC, seq ASC"
+        )
+        for row in rows:
+            version_id = new_id("v")
+            await self.conn.execute(
+                """INSERT INTO message_versions
+                   (id,message_id,version,content,reasoning,tool_events,attachments,
+                    duration_ms,status,source,reply_to_version_id,created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    version_id,
+                    row["id"],
+                    1,
+                    row.get("content") or "",
+                    row.get("reasoning") or "",
+                    row.get("tool_events") or "[]",
+                    row.get("attachments") or "[]",
+                    row.get("duration_ms") or 0,
+                    "complete",
+                    "original",
+                    "",
+                    row.get("created_at") or now(),
+                ),
+            )
+            await self.conn.execute(
+                "UPDATE messages SET active_version_id = ? WHERE id = ?",
+                (version_id, row["id"]),
+            )
+
+        # Link an assistant's original version to the user version it answered
+        # so switching either side of an edited turn moves both sides together.
+        messages = await self._fetchall(
+            "SELECT id, chat_id, role, seq, active_version_id FROM messages"
+            " ORDER BY chat_id ASC, seq ASC"
+        )
+        previous_user: dict[str, dict] = {}
+        for row in messages:
+            if row["role"] == "user":
+                previous_user[row["chat_id"]] = row
+                continue
+            if row["role"] != "assistant":
+                continue
+            user_row = previous_user.get(row["chat_id"])
+            if not user_row or not user_row.get("active_version_id"):
+                continue
+            await self.conn.execute(
+                """UPDATE message_versions SET reply_to_version_id = ?
+                   WHERE message_id = ? AND reply_to_version_id = ''""",
+                (user_row["active_version_id"], row["id"]),
+            )
+        await self.conn.commit()
 
     async def _encrypt_plaintext(self) -> None:
         """Encrypt values written by versions that predate at-rest encryption.
@@ -155,6 +257,7 @@ class Database:
         targets = {
             "chats": ("title", "goal"),
             "messages": ("content", "reasoning", "tool_events", "attachments"),
+            "message_versions": ("content", "reasoning", "tool_events", "attachments"),
             "tasks": ("title", "detail"),
             "uploads": ("filename", "text_excerpt"),
             "settings": ("value",),
@@ -288,24 +391,58 @@ class Database:
         await self.conn.commit()
 
     # --------------------------------------------------------------- messages
-    async def list_messages(self, chat_id: str) -> list[dict]:
-        rows = await self._fetchall(
-            "SELECT * FROM messages WHERE chat_id = ? ORDER BY seq ASC", (chat_id,)
-        )
-        for row in rows:
-            row["content"] = self._decrypt(row.get("content"))
-            row["reasoning"] = self._decrypt(row.get("reasoning"))
-            row["tool_events"] = _loads(self._decrypt(row.get("tool_events")), [])
-            row["attachments"] = _loads(self._decrypt(row.get("attachments")), [])
-        return rows
-
-    async def get_message(self, message_id: str) -> dict | None:
-        row = await self._fetchone("SELECT * FROM messages WHERE id = ?", (message_id,))
+    def _decrypt_message(self, row: dict | None) -> dict | None:
         if row is not None:
             row["content"] = self._decrypt(row.get("content"))
             row["reasoning"] = self._decrypt(row.get("reasoning"))
             row["tool_events"] = _loads(self._decrypt(row.get("tool_events")), [])
             row["attachments"] = _loads(self._decrypt(row.get("attachments")), [])
+            row.setdefault("versions", [])
+            row.setdefault("active_version_id", "")
+        return row
+
+    def _decrypt_version(self, row: dict | None) -> dict | None:
+        if row is not None:
+            row["content"] = self._decrypt(row.get("content"))
+            row["reasoning"] = self._decrypt(row.get("reasoning"))
+            row["tool_events"] = _loads(self._decrypt(row.get("tool_events")), [])
+            row["attachments"] = _loads(self._decrypt(row.get("attachments")), [])
+        return row
+
+    async def _versions_for(self, message_ids: list[str]) -> dict[str, list[dict]]:
+        if not message_ids:
+            return {}
+        placeholders = ",".join("?" for _ in message_ids)
+        rows = await self._fetchall(
+            f"SELECT * FROM message_versions WHERE message_id IN ({placeholders})"
+            " ORDER BY message_id ASC, version ASC",  # noqa: S608 - placeholders only
+            tuple(message_ids),
+        )
+        grouped: dict[str, list[dict]] = {}
+        for row in rows:
+            version = self._decrypt_version(row)
+            if version is not None:
+                grouped.setdefault(version["message_id"], []).append(version)
+        return grouped
+
+    async def list_messages(self, chat_id: str) -> list[dict]:
+        rows = await self._fetchall(
+            "SELECT * FROM messages WHERE chat_id = ? ORDER BY seq ASC", (chat_id,)
+        )
+        for row in rows:
+            self._decrypt_message(row)
+        versions = await self._versions_for([row["id"] for row in rows])
+        for row in rows:
+            row["versions"] = versions.get(row["id"], [])
+        return rows
+
+    async def get_message(self, message_id: str) -> dict | None:
+        row = await self._fetchone("SELECT * FROM messages WHERE id = ?", (message_id,))
+        if row is None:
+            return None
+        self._decrypt_message(row)
+        versions = await self._versions_for([message_id])
+        row["versions"] = versions.get(message_id, [])
         return row
 
     async def add_message(
@@ -316,17 +453,26 @@ class Database:
         reasoning: str = "",
         tool_events: list[dict] | None = None,
         attachments: list[dict] | None = None,
+        source: str = "original",
+        reply_to_version_id: str = "",
+        status: str = "complete",
     ) -> dict:
         row = await self._fetchone(
             "SELECT COALESCE(MAX(seq), 0) + 1 AS next FROM messages WHERE chat_id = ?", (chat_id,)
         )
         seq = int(row["next"] if row else 1)
         message_id = new_id("m")
+        version_id = new_id("v")
         stamp = now()
+        if source not in {"original", "edit", "regenerate", "draft"}:
+            source = "original"
+        if status not in {"complete", "streaming", "error"}:
+            status = "complete"
         await self.conn.execute(
             """INSERT INTO messages
-               (id,chat_id,role,content,reasoning,tool_events,attachments,seq,created_at)
-               VALUES (?,?,?,?,?,?,?,?,?)""",
+               (id,chat_id,role,content,reasoning,tool_events,attachments,
+                duration_ms,seq,created_at,active_version_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 message_id,
                 chat_id,
@@ -335,23 +481,35 @@ class Database:
                 self._encrypt(reasoning),
                 self._encrypt(_json(tool_events or [])),
                 self._encrypt(_json(attachments or [])),
+                0,
                 seq,
+                stamp,
+                version_id,
+            ),
+        )
+        await self.conn.execute(
+            """INSERT INTO message_versions
+               (id,message_id,version,content,reasoning,tool_events,attachments,
+                duration_ms,status,source,reply_to_version_id,created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                version_id,
+                message_id,
+                1,
+                self._encrypt(content),
+                self._encrypt(reasoning),
+                self._encrypt(_json(tool_events or [])),
+                self._encrypt(_json(attachments or [])),
+                0,
+                status,
+                source,
+                reply_to_version_id,
                 stamp,
             ),
         )
         await self.conn.commit()
         await self.touch_chat(chat_id)
-        return {
-            "id": message_id,
-            "chat_id": chat_id,
-            "role": role,
-            "content": content,
-            "reasoning": reasoning,
-            "tool_events": tool_events or [],
-            "attachments": attachments or [],
-            "seq": seq,
-            "created_at": stamp,
-        }
+        return await self.get_message(message_id)  # type: ignore[return-value]
 
     async def update_message(
         self,
@@ -361,12 +519,34 @@ class Database:
         tool_events: list[dict] | None = None,
         duration_ms: int = 0,
     ) -> None:
+        """Write the finished turn into the message's active version."""
+        row = await self._fetchone(
+            "SELECT active_version_id FROM messages WHERE id = ?", (message_id,)
+        )
+        version_id = (row or {}).get("active_version_id") or ""
+        encrypted_content = self._encrypt(content)
+        encrypted_reasoning = self._encrypt(reasoning)
+        encrypted_tools = self._encrypt(_json(tool_events or []))
+        if version_id:
+            await self.conn.execute(
+                """UPDATE message_versions
+                   SET content = ?, reasoning = ?, tool_events = ?, duration_ms = ?,
+                       status = 'complete'
+                   WHERE id = ?""",
+                (
+                    encrypted_content,
+                    encrypted_reasoning,
+                    encrypted_tools,
+                    duration_ms,
+                    version_id,
+                ),
+            )
         await self.conn.execute(
             "UPDATE messages SET content = ?, reasoning = ?, tool_events = ?, duration_ms = ? WHERE id = ?",
             (
-                self._encrypt(content),
-                self._encrypt(reasoning),
-                self._encrypt(_json(tool_events or [])),
+                encrypted_content,
+                encrypted_reasoning,
+                encrypted_tools,
                 duration_ms,
                 message_id,
             ),
@@ -374,11 +554,144 @@ class Database:
         await self.conn.commit()
 
     async def set_message_content(self, message_id: str, content: str) -> None:
+        row = await self._fetchone(
+            "SELECT active_version_id FROM messages WHERE id = ?", (message_id,)
+        )
+        version_id = (row or {}).get("active_version_id") or ""
+        encrypted = self._encrypt(content)
         await self.conn.execute(
-            "UPDATE messages SET content = ? WHERE id = ?",
-            (self._encrypt(content), message_id),
+            "UPDATE messages SET content = ? WHERE id = ?", (encrypted, message_id)
+        )
+        if version_id:
+            await self.conn.execute(
+                "UPDATE message_versions SET content = ? WHERE id = ?",
+                (encrypted, version_id),
+            )
+        await self.conn.commit()
+
+    async def create_message_version(
+        self,
+        message_id: str,
+        content: str = "",
+        reasoning: str = "",
+        tool_events: list[dict] | None = None,
+        attachments: list[dict] | None = None,
+        duration_ms: int = 0,
+        source: str = "edit",
+        reply_to_version_id: str = "",
+        status: str = "complete",
+        activate: bool = True,
+    ) -> dict | None:
+        """Append a new version to a message and optionally make it active."""
+        message = await self.get_message(message_id)
+        if message is None:
+            return None
+        if attachments is None:
+            attachments = message.get("attachments") or []
+        if source not in {"original", "edit", "regenerate", "draft"}:
+            source = "edit"
+        if status not in {"complete", "streaming", "error"}:
+            status = "complete"
+        row = await self._fetchone(
+            "SELECT COALESCE(MAX(version), 0) + 1 AS next FROM message_versions WHERE message_id = ?",
+            (message_id,),
+        )
+        version = int(row["next"] if row else 1)
+        version_id = new_id("v")
+        stamp = now()
+        await self.conn.execute(
+            """INSERT INTO message_versions
+               (id,message_id,version,content,reasoning,tool_events,attachments,
+                duration_ms,status,source,reply_to_version_id,created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                version_id,
+                message_id,
+                version,
+                self._encrypt(content),
+                self._encrypt(reasoning),
+                self._encrypt(_json(tool_events or [])),
+                self._encrypt(_json(attachments)),
+                duration_ms,
+                status,
+                source,
+                reply_to_version_id,
+                stamp,
+            ),
+        )
+        if activate:
+            await self.conn.execute(
+                """UPDATE messages SET content = ?, reasoning = ?, tool_events = ?,
+                       attachments = ?, duration_ms = ?, active_version_id = ?
+                   WHERE id = ?""",
+                (
+                    self._encrypt(content),
+                    self._encrypt(reasoning),
+                    self._encrypt(_json(tool_events or [])),
+                    self._encrypt(_json(attachments)),
+                    duration_ms,
+                    version_id,
+                    message_id,
+                ),
+            )
+        await self.conn.commit()
+        await self.touch_chat(message["chat_id"])
+        return await self.get_message(message_id)
+
+    async def activate_message_version(self, message_id: str, version_id: str) -> dict | None:
+        """Make one stored version the message's active content."""
+        version = await self.get_message_version(version_id)
+        if version is None or version["message_id"] != message_id:
+            return None
+        await self.conn.execute(
+            """UPDATE messages SET content = ?, reasoning = ?, tool_events = ?,
+                   attachments = ?, duration_ms = ?, active_version_id = ?
+               WHERE id = ?""",
+            (
+                self._encrypt(version.get("content") or ""),
+                self._encrypt(version.get("reasoning") or ""),
+                self._encrypt(_json(version.get("tool_events") or [])),
+                self._encrypt(_json(version.get("attachments") or [])),
+                version.get("duration_ms") or 0,
+                version_id,
+                message_id,
+            ),
         )
         await self.conn.commit()
+        return await self.get_message(message_id)
+
+    async def list_message_versions(self, message_id: str) -> list[dict]:
+        versions = await self._versions_for([message_id])
+        return versions.get(message_id, [])
+
+    async def get_message_version(self, version_id: str) -> dict | None:
+        row = await self._fetchone(
+            "SELECT * FROM message_versions WHERE id = ?", (version_id,)
+        )
+        return self._decrypt_version(row)
+
+    async def latest_version_for_reply(
+        self, message_id: str, reply_to_version_id: str
+    ) -> dict | None:
+        row = await self._fetchone(
+            """SELECT * FROM message_versions
+               WHERE message_id = ? AND reply_to_version_id = ?
+               ORDER BY version DESC LIMIT 1""",
+            (message_id, reply_to_version_id),
+        )
+        return self._decrypt_version(row)
+
+    async def next_message(self, chat_id: str, seq: int) -> dict | None:
+        row = await self._fetchone(
+            "SELECT * FROM messages WHERE chat_id = ? AND seq > ? ORDER BY seq ASC LIMIT 1",
+            (chat_id, seq),
+        )
+        if row is None:
+            return None
+        self._decrypt_message(row)
+        versions = await self._versions_for([row["id"]])
+        row["versions"] = versions.get(row["id"], [])
+        return row
 
     async def delete_messages_after(self, chat_id: str, seq: int) -> None:
         await self.conn.execute(
@@ -391,11 +704,11 @@ class Database:
             "SELECT * FROM messages WHERE chat_id = ? AND role = 'assistant' ORDER BY seq DESC LIMIT 1",
             (chat_id,),
         )
-        if row is not None:
-            row["content"] = self._decrypt(row.get("content"))
-            row["reasoning"] = self._decrypt(row.get("reasoning"))
-            row["tool_events"] = _loads(self._decrypt(row.get("tool_events")), [])
-            row["attachments"] = _loads(self._decrypt(row.get("attachments")), [])
+        if row is None:
+            return None
+        self._decrypt_message(row)
+        versions = await self._versions_for([row["id"]])
+        row["versions"] = versions.get(row["id"], [])
         return row
 
     async def delete_message(self, message_id: str) -> None:

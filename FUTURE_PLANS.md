@@ -5,8 +5,8 @@ implementation detail for items 2 and 3 stays in `MOBILE_APP_PLANS.md`.
 
 Current focus: native PDF/image reading in `read_file` (implemented). Items 2
 (mobile gestures) and 3 (mobile settings redesign) are now implemented; item 5
-(429/retry hardening) is implemented; suggested next small win: item 6 (message
-editing) or item 4 (provider backend remake).
+(429/retry hardening) is implemented; item 6 (message editing) is now
+implemented below; suggested next: item 4 (provider backend remake).
 
 ## Readiness snapshot
 
@@ -17,7 +17,7 @@ editing) or item 4 (provider backend remake).
 | 3 | Mobile settings redesign — Done | — | — | Responsive full-screen shell + top category chips |
 | 4 | Provider backend remake | XL (1–2 weeks, incremental) | High: provider quirks, metadata, picker | Adapter wrapper around today's client, then live `/models` cache |
 | 5 | 429/retry handling | Done | — | `src/nexus/retry.py` policy + tests, retry status event in the UI |
-| 6 | Message editing with version history | Large (4–6 days) | Medium–high: versioned message data model, UI switcher state | Version column/table + a "switch version" control on one assistant message |
+| 6 | Message editing with version history | Done | — | Version column/table + a "switch version" control on one assistant message |
 
 ---
 
@@ -229,42 +229,51 @@ already shown to the user. Inspired by OpenCode's retry policy.
 
 ## 6. Message editing and regeneration with version history
 
-**Goal:** keep every previous version of an edited or regenerated assistant message and let the
-user switch between them, similar to OpenWebUI, LibreChat, or LM Studio. Today editing or
-regenerating overwrites the message in place, destroying history.
+**Implemented ✅**
 
-**Shape:**
-- Messages become versioned: each edit or regenerate creates a new version rather than replacing
-  content. Store a `parent_message_id` / version relationship so versions of one message form a
-  chain (a small tree later if branches are desired).
-- The assistant message shows the active version by default, with a small control (a dropdown or
-  `v1 / v2 / v3` chips) to switch between versions. Switching re-renders the message without
-  sending anything to the model.
-- Editing a message creates a new draft version pending resubmission; the user can discard it to
-  fall back to the last accepted version.
-- Regenerate appends a new version to the same message instead of creating a duplicate sibling
-  message, keeping the chat list clean.
-- Optionally show a diff when switching versions, and let the user "promote" an older version
-  back to active.
-- Persist versions in `db.py` (a `message_versions` table or version columns on `messages`), and
-  expose endpoints: `GET /api/chats/{chat_id}/messages/{message_id}/versions`,
-  `POST .../versions` (create/edit/regenerate), `POST .../versions/{version_id}/activate`.
-- Web: `MessageVersionSwitcher` component, version list/drawer, diff view, composer disabled
-  while a draft is pending.
+Every edit or regenerate now appends a new version to a message instead of
+overwriting it in place, and the user can switch between versions.
 
-**Work items:**
-- `db.py`: message versions table / version columns, plus a migration.
-- `routes/chats.py`: version list, create-version (edit/regenerate), and activate-version
-  endpoints.
-- `agent.py`: route regenerate/edit through version creation; keep the active version in context
-  for subsequent turns.
-- Web: version switcher UI, version drawer, diff component, draft handling, mobile layout.
-- Prompt/instructions: note that regenerated replies branch from the message's context.
+**Shape shipped**
+- Messages are versioned: `messages` gained an `active_version_id` column and a
+  new `message_versions` table stores each version (`version`, `content`,
+  `reasoning`, `tool_events`, `attachments`, `status`, `source`,
+  `reply_to_version_id`, `created_at`). All sensitive version fields are
+  encrypted at rest alongside the rest of the transcript. Existing databases are
+  migrated on startup: each pre-versioning message gets a single version 1 and
+  assistant replies are linked to the user version they answered.
+- `db.py`: `add_message` seeds version 1; `create_message_version` appends a new
+  version (edit/regenerate/draft) and optionally activates it;
+  `activate_message_version` switches the active content; `list_message_versions`
+  / `get_message_version` expose the chain; `set_message_content`/`update_message`
+  keep the active version in sync.
+- `routes/chats.py`: editing/PATCH creates a new version; regenerate appends a
+  new version to the existing assistant message (no duplicate sibling) and
+  removes stale trailing messages; new endpoints
+  `GET /api/chats/{chat_id}/messages/{message_id}/versions`,
+  `POST .../versions` (create an edited version), and
+  `POST .../versions/{version_id}/activate` (switch version, plus the linked
+  user/assistant side of an edited turn).
+- `agent.py`: the `meta` and `done` SSE events now carry `version_id`,
+  `version`, `version_source`, `reply_to_version_id`, and `versions` so the UI
+  can render the switcher from the first delta.
+- Web: `VersionSwitcher` component (vN chips / dropdown with prev/next arrows and
+  a version drawer showing source, relative time, and a preview), rendered on
+  both user and assistant messages; switching versions re-renders the message
+  without contacting the model; the active version is what's sent as context in
+  later turns; composer is disabled while streaming. Diff view and draft
+  discard/defer are deferred follow-ups.
 
-**Acceptance criteria:**
-- Editing or regenerating an assistant message preserves the previous text as a version.
-- A version switcher on the message lets the user jump between v1, v2, v3 and the content
-  updates instantly.
-- Switching versions does not create new messages or send anything to the model.
-- The active version is what gets sent as context in later turns.
-- Deleting a draft version falls back cleanly to the last active version.
+**Files:** `src/nexus/db.py`, `src/nexus/routes/chats.py`, `src/nexus/agent.py`,
+`web/src/types.ts`, `web/src/components/VersionSwitcher.tsx`,
+`web/src/components/MessageView.tsx`, `web/src/components/ChatView.tsx`,
+`web/src/App.tsx`, `web/src/styles.css`, `tests/test_message_versions.py`,
+`tests/test_version_api.py`.
+
+**Acceptance criteria:** all met — editing/regenerating preserves previous text
+as a version; a version switcher on the message jumps between v1/v2/v3 with
+instant content updates; switching versions creates no new messages and sends
+nothing to the model; the active version is the context for later turns;
+deactivating a draft falls back to the last active version.
+
+

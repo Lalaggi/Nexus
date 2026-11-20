@@ -1,4 +1,17 @@
 """The streaming tool-use loop."""
+# Copyright (C) 2026 Ellie Wells <elilovescomputers@gmail.com>
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 from __future__ import annotations
 
@@ -343,6 +356,16 @@ async def run_turn(
             supports_vision=CONFIG.vision_enabled and resolved.supports_vision,
         )
 
+        active_message = await db.get_message(assistant_message_id) or {}
+        active_version_id = active_message.get("active_version_id", "")
+        active_version = next(
+            (
+                version
+                for version in active_message.get("versions", [])
+                if version.get("id") == active_version_id
+            ),
+            {},
+        )
         await emit(
             {
                 "type": "meta",
@@ -351,6 +374,11 @@ async def run_turn(
                 "provider_label": resolved.provider.label,
                 "model": resolved.name,
                 "model_id": resolved.model_id,
+                "version_id": active_version_id,
+                "version": active_version.get("version", 1),
+                "version_source": active_version.get("source", "original"),
+                "reply_to_version_id": active_version.get("reply_to_version_id", ""),
+                "versions": active_message.get("versions", []),
             }
         )
 
@@ -610,6 +638,13 @@ async def run_turn(
             print(f"[title] error: {exc}")
 
         try:
+            final_message = await db.get_message(assistant_message_id) or {}
+            versions = final_message.get("versions", [])
+            final_version_id = final_message.get("active_version_id", "")
+            final_version = next(
+                (version.get("version", 1) for version in versions if version.get("id") == final_version_id),
+                1,
+            )
             await emit(
                 {
                     "type": "done",
@@ -620,6 +655,9 @@ async def run_turn(
                     "duration_ms": duration_ms,
                     "usage": usage,
                     "cancelled": cancelled,
+                    "version_id": final_version_id,
+                    "version": final_version,
+                    "versions": versions,
                 }
             )
         except Exception:

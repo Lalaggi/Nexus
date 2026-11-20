@@ -1,3 +1,19 @@
+/*
+ * Copyright (C) 2026 Ellie Wells <elilovescomputers@gmail.com>
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import { useEffect, useRef, useState } from 'react';
 import {
   Check,
@@ -13,6 +29,7 @@ import { attachmentKind, formatBytes, hostOf, type FileTarget } from '../api';
 import { copyText } from '../clipboard';
 import Markdown from './Markdown';
 import ToolTimeline, { sourceList } from './ToolTimeline';
+import VersionSwitcher from './VersionSwitcher';
 import { Brandmark } from './Brandmark';
 import { openExternal } from '../server';
 
@@ -82,6 +99,7 @@ export default function MessageView({
   onRegenerate,
   onEdit,
   onOpenFile,
+  onActivateVersion,
 }: {
   message: Message;
   streaming?: boolean;
@@ -90,6 +108,7 @@ export default function MessageView({
   onRegenerate?: () => void;
   onEdit?: (message: Message) => void;
   onOpenFile?: (file: FileTarget) => void;
+  onActivateVersion?: (messageId: string, versionId: string) => void;
 }) {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle');
   const copyTimer = useRef<number | null>(null);
@@ -129,6 +148,14 @@ export default function MessageView({
           <AttachmentGrid attachments={message.attachments} onOpenFile={onOpenFile} />
           {message.content && <div className="user-text">{message.content}</div>}
         </div>
+        {!streaming && (
+          <VersionSwitcher
+            versions={message.versions}
+            activeVersionId={message.active_version_id}
+            align="right"
+            onActivate={(versionId) => onActivateVersion?.(message.id, versionId)}
+          />
+        )}
         {!streaming && hasVisibleContent && (
           <div className="message-actions message-actions-user">
             <button
@@ -215,6 +242,14 @@ export default function MessageView({
               ))}
             </div>
           </div>
+        )}
+
+        {!streaming && (
+          <VersionSwitcher
+            versions={message.versions}
+            activeVersionId={message.active_version_id}
+            onActivate={(versionId) => onActivateVersion?.(message.id, versionId)}
+          />
         )}
 
         {!streaming && hasVisibleContent && (

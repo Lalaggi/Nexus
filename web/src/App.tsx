@@ -1,3 +1,19 @@
+/*
+ * Copyright (C) 2026 Ellie Wells <elilovescomputers@gmail.com>
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FolderOpen,
@@ -89,6 +105,10 @@ export default function App() {
   const [preview, setPreview] = useState<FileTarget | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [versionEdit, setVersionEdit] = useState<{
+    messageId: string;
+    versionId: string;
+  } | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const activeIdRef = useRef<string | null>(null);
@@ -666,7 +686,6 @@ export default function App() {
       setDraftAttachments([]);
       return;
     }
-
     let chat = activeChat;
     if (!chat) {
       try {
@@ -713,6 +732,30 @@ export default function App() {
       return previous.slice(0, lastUser + 1);
     });
     startStream(activeChat.id, `/api/chats/${activeChat.id}/regenerate`, 'POST', undefined);
+  };
+
+  const handleActivateVersion = async (messageId: string, versionId: string) => {
+    setStreaming(false);
+    try {
+      const data = await api<{ messages: Message[] }>(
+        `/messages/${messageId}/versions/${versionId}/activate`,
+        { method: 'POST' }
+      );
+      setMessages((previous) => {
+        const byId = new Map(previous.map((m) => [m.id, m]));
+        for (const message of data.messages ?? []) {
+          byId.set(message.id, {
+            ...message,
+            versions: message.versions ?? [],
+            active_version_id: message.active_version_id ?? undefined,
+          });
+        }
+        return Array.from(byId.values()).sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+      });
+      notify('Switched to version');
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Could not switch versions.');
+    }
   };
 
   const stopStream = () => {
@@ -970,6 +1013,7 @@ export default function App() {
                 window.setTimeout(() => inputRef.current?.focus(), 50);
               }}
               onOpenFile={setPreview}
+              onActivateVersion={handleActivateVersion}
             />
             <div className="composer-dock">
               <Composer

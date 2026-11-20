@@ -1,3 +1,19 @@
+/*
+ * Copyright (C) 2026 Ellie Wells <elilovescomputers@gmail.com>
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 export type Role = 'user' | 'assistant';
 
 export interface Chat {
@@ -51,6 +67,24 @@ export interface ToolEvent {
   status?: 'running' | 'done';
 }
 
+export type VersionSource = 'original' | 'edit' | 'regenerate' | 'draft';
+export type VersionStatus = 'complete' | 'streaming' | 'error';
+
+export interface MessageVersion {
+  id: string;
+  message_id?: string;
+  version: number;
+  content: string;
+  reasoning: string;
+  tool_events: ToolEvent[];
+  attachments: Attachment[];
+  duration_ms?: number;
+  status?: VersionStatus;
+  source?: VersionSource;
+  reply_to_version_id?: string;
+  created_at?: string;
+}
+
 export interface Message {
   id: string;
   chat_id?: string;
@@ -64,6 +98,9 @@ export interface Message {
   seq?: number;
   error?: string;
   retry?: RetryStatus;
+  versions?: MessageVersion[];
+  active_version_id?: string;
+  version?: number;
 }
 
 export interface RetryStatus {

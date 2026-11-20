@@ -1,6 +1,16 @@
 /* Nexus — Material 3 Expressive, dark.
    Tokens follow the same roles used by BrokenImage so the two apps feel related.
-   No webfonts: the app must run offline. */
+   No webfonts: the app must run offline.
+   Copyright (C) 2026 Ellie Wells <elilovescomputers@gmail.com>
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+       http://www.apache.org/licenses/LICENSE-2.0
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License. */
 
 :root {
   --primary: #d0bcff;
@@ -1763,6 +1773,142 @@ a {
   background: var(--surface-container-high);
   color: var(--on-surface);
 }
+
+/* --------------------------------------------------------------- version switcher */
+.version-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--on-surface-variant);
+}
+.version-switcher.align-right {
+  justify-content: flex-end;
+}
+.version-arrow {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--shape-full);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+}
+.version-arrow:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.version-arrow:hover:not(:disabled) {
+  background: var(--surface-container-high);
+  color: var(--on-surface);
+}
+.version-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 9px;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--shape-full);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface-variant);
+  cursor: pointer;
+}
+.version-label:hover {
+  background: var(--surface-container-high);
+  color: var(--on-surface);
+}
+.version-menu {
+  position: absolute;
+  z-index: 42;
+  width: min(320px, 92vw);
+  border: 1px solid var(--outline);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  animation: fadeIn var(--dur-short) var(--ease-emphasized);
+}
+.version-menu-title {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--outline-variant);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+}
+.version-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--on-surface);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+.version-item:hover {
+  background: var(--surface-container-high);
+}
+.version-item.is-active {
+  background: rgba(100, 116, 255, 0.08);
+  color: var(--on-surface);
+}
+.version-item-num {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--surface-container-high);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--on-surface-variant);
+  margin-right: 2px;
+}
+.version-item.is-active .version-item-num {
+  background: var(--primary);
+  color: white;
+}
+.version-item-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.version-item-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--on-surface-variant);
+}
+.version-item-preview {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 12.5px;
+  color: var(--on-surface);
+  text-overflow: ellipsis;
+  line-clamp: 2;
+  -webkit-line-clamp: 2;
+  white-space: pre-wrap;
+}
+.version-check {
+  flex: none;
+  color: var(--primary);
+}
+
 .message-error {
   margin: 8px 0;
   padding: 9px 12px;

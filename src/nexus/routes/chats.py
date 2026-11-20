@@ -1,4 +1,17 @@
 """Chat, message, and task endpoints."""
+# Copyright (C) 2026 Ellie Wells <elilovescomputers@gmail.com>
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 from __future__ import annotations
 
@@ -49,6 +62,10 @@ class TaskPatch(BaseModel):
 
 class MessagePatch(BaseModel):
     content: str | None = None
+
+
+class MessageVersionCreate(BaseModel):
+    content: str
 
 
 @router.get("/chats")
@@ -242,7 +259,12 @@ async def send_message(request: Request, chat_id: str, body: SendMessage):
     user_message = await db.add_message(
         chat_id, "user", body.content.strip(), attachments=attachments
     )
-    nexus = await db.add_message(chat_id, "assistant", "")
+    nexus = await db.add_message(
+        chat_id,
+        "assistant",
+        "",
+        reply_to_version_id=user_message.get("active_version_id", ""),
+    )
     state = start_run(chat_id)
     return _sse_stream(
         request,
@@ -281,15 +303,43 @@ async def regenerate(request: Request, chat_id: str):
             break
     if last_user_index is None:
         raise HTTPException(400, "No user message to regenerate from.")
-    for message in messages[last_user_index + 1 :]:
+    user_message = messages[last_user_index]
+    reply_to_version_id = user_message.get("active_version_id", "")
+    trailing = messages[last_user_index + 1 :]
+
+    # Regeneration appends a new version to the existing assistant message
+    # instead of creating a duplicate sibling. Any stale messages after it are
+    # removed first so the version chain stays at the tail of the chat.
+    assistant = trailing[0] if trailing and trailing[0]["role"] == "assistant" else None
+    extras = trailing[1:] if assistant is not None else trailing
+    for message in extras:
         await db.delete_message(message["id"])
 
-    nexus = await db.add_message(chat_id, "assistant", "")
+    if assistant is not None:
+        assistant_message = await db.create_message_version(
+            assistant["id"],
+            content="",
+            source="regenerate",
+            reply_to_version_id=reply_to_version_id,
+            status="streaming",
+        )
+        if assistant_message is None:
+            raise HTTPException(404, "Assistant message not found")
+    else:
+        assistant_message = await db.add_message(
+            chat_id,
+            "assistant",
+            "",
+            source="regenerate",
+            reply_to_version_id=reply_to_version_id,
+            status="streaming",
+        )
+
     state = start_run(chat_id)
     return _sse_stream(
         request,
         chat_id,
-        nexus["id"],
+        assistant_message["id"],
         state,
         model_id=chat.get("model") or DEFAULT_MODEL,
     )
@@ -303,9 +353,91 @@ async def patch_message(message_id: str, body: MessagePatch, request: Request):
         raise HTTPException(404, "Message not found")
     if body.content is None:
         raise HTTPException(400, "Content is required.")
-    await db.set_message_content(message_id, body.content.strip())
+    content = body.content.strip()
+    if not content and not message.get("attachments"):
+        raise HTTPException(400, "Message is empty.")
+    if content == (message.get("content") or ""):
+        return {"ok": True, "message": message}
+    updated = await db.create_message_version(message_id, content=content, source="edit")
+    if updated is None:
+        raise HTTPException(404, "Message not found")
+    return {"ok": True, "message": updated}
+
+
+@router.get("/chats/{chat_id}/messages/{message_id}/versions")
+async def list_message_versions(chat_id: str, message_id: str, request: Request) -> dict:
+    db = db_of(request)
+    message = await db.get_message(message_id)
+    if message is None or message["chat_id"] != chat_id:
+        raise HTTPException(404, "Message not found")
+    return {
+        "message_id": message_id,
+        "active_version_id": message.get("active_version_id", ""),
+        "versions": message.get("versions", []),
+    }
+
+
+@router.post("/chats/{chat_id}/messages/{message_id}/versions")
+async def create_message_version(
+    chat_id: str, message_id: str, body: MessageVersionCreate, request: Request
+) -> dict:
+    db = db_of(request)
+    message = await db.get_message(message_id)
+    if message is None or message["chat_id"] != chat_id:
+        raise HTTPException(404, "Message not found")
+    content = body.content.strip()
+    if not content and not message.get("attachments"):
+        raise HTTPException(400, "Message is empty.")
+    if content == (message.get("content") or ""):
+        return {"ok": True, "message": message}
+    updated = await db.create_message_version(message_id, content=content, source="edit")
+    if updated is None:
+        raise HTTPException(404, "Message not found")
+    return {"ok": True, "message": updated}
+
+
+@router.post("/messages/{message_id}/versions/{version_id}/activate")
+async def activate_message_version(
+    message_id: str, version_id: str, request: Request
+) -> dict:
+    db = db_of(request)
+    message = await db.get_message(message_id)
+    version = await db.get_message_version(version_id)
+    if message is None or version is None or version["message_id"] != message_id:
+        raise HTTPException(404, "Version not found")
+
+    updated_messages: list[dict] = []
+    activated = await db.activate_message_version(message_id, version_id)
+    if activated is not None:
+        updated_messages.append(activated)
+
+    # Switching one side of an edited turn should switch the other side too, so
+    # an edited user message and the reply it produced move together.
+    if message["role"] == "assistant":
+        linked_id = version.get("reply_to_version_id") or ""
+        if linked_id:
+            linked_version = await db.get_message_version(linked_id)
+            if linked_version and linked_version["message_id"] != message_id:
+                linked_message = await db.get_message(linked_version["message_id"])
+                if linked_message and linked_message["role"] == "user":
+                    linked_updated = await db.activate_message_version(
+                        linked_message["id"], linked_version["id"]
+                    )
+                    if linked_updated is not None:
+                        updated_messages.append(linked_updated)
+    elif message["role"] == "user":
+        following = await db.next_message(message["chat_id"], int(message["seq"]))
+        if following and following["role"] == "assistant":
+            candidate = await db.latest_version_for_reply(following["id"], version_id)
+            if candidate is not None:
+                following_updated = await db.activate_message_version(
+                    following["id"], candidate["id"]
+                )
+                if following_updated is not None:
+                    updated_messages.append(following_updated)
+
     await db.touch_chat(message["chat_id"])
-    return {"ok": True, "message_id": message_id}
+    return {"messages": updated_messages}
 
 
 @router.delete("/messages/{message_id}/after")
