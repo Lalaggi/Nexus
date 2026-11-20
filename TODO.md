@@ -92,19 +92,20 @@ Items are grouped roughly in suggested implementation order (lowest risk first),
 - Web: `QuestionCard` component, stream event handling, answer submission, mobile layout.
 - Prompt: tell the model to ask only when a wrong guess would be costly, and to batch related questions into one call.
 
-### 11. Provider backend remake
+### 11. Provider backend remake ✅ (backend done, frontend pending)
 **Goal:** make providers and models portable instead of hand-curated, so any model on OpenRouter, NVIDIA NIM, SiliconFlow, and similar services is easy to use.
 
-**Ideas:**
-- Provider adapters with a common interface: list models, fetch capabilities (vision/tools/context length), resolve a key, and stream completions.
-- Pull real model lists from each provider's API instead of a hardcoded registry.
-- Cache model metadata (especially `input_modalities`, tool support, and context size) and show it in the picker.
-- Favorites: star models, persist them, and show only favorites in the quick model selector; full searchable list in settings.
-- Per-provider base URLs, headers, and auth quirks (OpenRouter, NIM, SiliconFlow, custom OpenAI-compatible endpoints).
-- Use capability metadata to drive features like native vision reading, so text-only models automatically fall back to text extraction.
-- Graceful degradation when a provider is offline or a key is missing.
+**Done:**
+- `model_catalog` DB table (`provider`, `model_id`, `name`, `enabled`, `is_default`, `source`) seeded with Nemotron 3.5 Super VL (enabled + default on NIM, enabled on OpenRouter).
+- `resolve_provider(db, provider, model_id)` resolves an explicit provider + API model id; hardcoded Nemotron registry removed.
+- `GET /api/models/catalog`, `POST /api/models/catalog/sync` (OpenRouter `/models`), `PATCH .../toggle`, `PATCH .../default`, `DELETE .../catalog/{id}`; `GET /api/settings` returns catalog + `default_model`.
+- Chats persist `model` + `provider`; composer shows only enabled models.
 
-**Files:** `src/nexus/providers.py`, `src/nexus/config.py`, `db.py` (`custom_models` / favorites), `routes/settings.py`, `web/src/components/SettingsDialog.tsx`, model picker in `App.tsx` / `Composer.tsx`.
+**Remaining (frontend):** none — done.
+- SettingsDialog model-catalog panel: flat list, default first, enabled alphabetical, "Show all models" reveals disabled, pretty names, darker toggles, manual add form.
+- Composer dropdown filtered to enabled models, default pre-selected, pretty names.
+
+**Files:** `src/nexus/providers.py`, `src/nexus/config.py`, `db.py` (`model_catalog`), `routes/settings.py`, `routes/chats.py`, `agent.py`, `web/src/components/SettingsDialog.tsx`, model picker in `App.tsx` / `Composer.tsx`.
 
 ## Testing & tooling (currently absent or partial)
 

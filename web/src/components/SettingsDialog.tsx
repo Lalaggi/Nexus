@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BarChart3,
+  Badge,
   Check,
   ChevronRight,
   Code,
@@ -11,21 +12,30 @@ import {
   KeyRound,
   Loader2,
   Plus,
+  RefreshCw,
+  Search,
   ShieldAlert,
   ShieldCheck,
+  Star,
   Terminal,
   Trash2,
   User,
   X,
 } from 'lucide-react';
-import type { CustomModel, SettingsSnapshot } from '../types';
+import type { CatalogModel, CustomModel, ProviderInfo, SettingsSnapshot } from '../types';
 import {
+  addCatalogModel,
   addCustomModel,
   createNote,
+  deleteCatalogModel,
   deleteCustomModel,
   deleteNote,
+  listCatalogModels,
   listCustomModels,
   listNotes,
+  setCatalogModelDefault,
+  syncCatalogModels,
+  toggleCatalogModel,
   type Note,
 } from '../api';
 
@@ -127,6 +137,15 @@ export default function SettingsDialog({
 
   const [customModelId, setCustomModelId] = useState('');
 
+  // Model catalog
+  const [catalogModels, setCatalogModels] = useState<CatalogModel[]>([]);
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [addModelProvider, setAddModelProvider] = useState<'nim' | 'openrouter'>('nim');
+  const [addModelId, setAddModelId] = useState('');
+  const [addModelName, setAddModelName] = useState('');
+  const [addingCatalogModel, setAddingCatalogModel] = useState(false);
+
   // Custom models
   const [customModels, setCustomModels] = useState<CustomModel[]>([]);
   const [newModelName, setNewModelName] = useState('');
@@ -152,6 +171,7 @@ export default function SettingsDialog({
     setClearOpenrouter(false);
     setTest(null);
     setCategory('provider');
+    setCatalogModels(settings.models);
     void refreshCustomModels();
     void refreshNotes();
     // Animate any initially-open cards so they render at full height.
@@ -175,6 +195,61 @@ export default function SettingsDialog({
       setCustomModels(models);
     } catch {
       /* ignore */
+    }
+  };
+
+  const handleSyncCatalog = async () => {
+    setSyncing(true);
+    try {
+      await syncCatalogModels();
+      onNotify('Model catalog synced from OpenRouter.');
+    } catch (error) {
+      onNotify(error instanceof Error ? error.message : 'Catalog sync failed.');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleToggleCatalog = async (catalog_id: string, enabled: boolean) => {
+    setCatalogModels(
+      catalogModels.map((m) =>
+        m.id === catalog_id ? { ...m, enabled } : m,
+      ),
+    );
+    try {
+      await toggleCatalogModel(catalog_id, enabled);
+    } catch (error) {
+      onNotify(error instanceof Error ? error.message : 'Could not update model.');
+    }
+  };
+
+  const handleSetDefaultCatalog = async (catalog_id: string) => {
+    setCatalogModels(
+      catalogModels.map((m) => ({ ...m, is_default: m.id === catalog_id })),
+    );
+    try {
+      await setCatalogModelDefault(catalog_id);
+    } catch (error) {
+      onNotify(error instanceof Error ? error.message : 'Could not set default model.');
+    }
+  };
+
+  const handleAddCatalogModel = async () => {
+    const provider = addModelProvider;
+    const modelId = addModelId.trim();
+    const name = addModelName.trim() || undefined;
+    if (!modelId) return;
+    setAddingCatalogModel(true);
+    try {
+      const entry = await addCatalogModel({ provider, model_id: modelId, name });
+      setCatalogModels((prev) => [...prev, entry]);
+      setAddModelId('');
+      setAddModelName('');
+      onNotify(`Added ${entry.name} to the catalog.`);
+    } catch (error) {
+      onNotify(error instanceof Error ? error.message : 'Could not add model.');
+    } finally {
+      setAddingCatalogModel(false);
     }
   };
 
@@ -326,8 +401,6 @@ export default function SettingsDialog({
                     setNimKey={setNimKey}
                     openrouterKey={openrouterKey}
                     setOpenrouterKey={setOpenrouterKey}
-                    customModelId={customModelId}
-                    setCustomModelId={setCustomModelId}
                     clearNim={clearNim}
                     setClearNim={setClearNim}
                     clearOpenrouter={clearOpenrouter}
@@ -335,14 +408,25 @@ export default function SettingsDialog({
                     runTest={runTest}
                     testing={testing}
                     test={test}
-                    customModels={customModels}
-                    newModelName={newModelName}
-                    setNewModelName={setNewModelName}
-                    newModelId={newModelId}
-                    setNewModelId={setNewModelId}
-                    addingModel={addingModel}
-                    addModel={addModel}
-                    removeModel={removeModel}
+                  />
+                  <ModelCatalogPanel
+                    settings={settings}
+                    catalogModels={catalogModels}
+                    setCatalogModels={setCatalogModels}
+                    catalogSearch={catalogSearch}
+                    setCatalogSearch={setCatalogSearch}
+                    syncing={syncing}
+                    handleSyncCatalog={handleSyncCatalog}
+                    handleToggleCatalog={handleToggleCatalog}
+                    handleSetDefaultCatalog={handleSetDefaultCatalog}
+                    handleAddCatalogModel={handleAddCatalogModel}
+                    addModelProvider={addModelProvider}
+                    setAddModelProvider={setAddModelProvider}
+                    addModelId={addModelId}
+                    setAddModelId={setAddModelId}
+                    addModelName={addModelName}
+                    setAddModelName={setAddModelName}
+                    addingCatalogModel={addingCatalogModel}
                   />
                 </div>
               </details>
@@ -459,32 +543,43 @@ export default function SettingsDialog({
 
               <main className="settings-content">
                 {category === 'provider' && (
-                  <ProviderPanel
-                    settings={settings}
-                    provider={provider}
-                    setProvider={setProvider}
-                    nimKey={nimKey}
-                    setNimKey={setNimKey}
-                    openrouterKey={openrouterKey}
-                    setOpenrouterKey={setOpenrouterKey}
-                    customModelId={customModelId}
-                    setCustomModelId={setCustomModelId}
-                    clearNim={clearNim}
-                    setClearNim={setClearNim}
-                    clearOpenrouter={clearOpenrouter}
-                    setClearOpenrouter={setClearOpenrouter}
-                    runTest={runTest}
-                    testing={testing}
-                    test={test}
-                    customModels={customModels}
-                    newModelName={newModelName}
-                    setNewModelName={setNewModelName}
-                    newModelId={newModelId}
-                    setNewModelId={setNewModelId}
-                    addingModel={addingModel}
-                    addModel={addModel}
-                    removeModel={removeModel}
-                  />
+                  <>
+                    <ProviderPanel
+                      settings={settings}
+                      provider={provider}
+                      setProvider={setProvider}
+                      nimKey={nimKey}
+                      setNimKey={setNimKey}
+                      openrouterKey={openrouterKey}
+                      setOpenrouterKey={setOpenrouterKey}
+                      clearNim={clearNim}
+                      setClearNim={setClearNim}
+                      clearOpenrouter={clearOpenrouter}
+                      setClearOpenrouter={setClearOpenrouter}
+                      runTest={runTest}
+                      testing={testing}
+                      test={test}
+                    />
+                    <ModelCatalogPanel
+                      settings={settings}
+                      catalogModels={catalogModels}
+                      setCatalogModels={setCatalogModels}
+                      catalogSearch={catalogSearch}
+                      setCatalogSearch={setCatalogSearch}
+                      syncing={syncing}
+                      handleSyncCatalog={handleSyncCatalog}
+                      handleToggleCatalog={handleToggleCatalog}
+                      handleSetDefaultCatalog={handleSetDefaultCatalog}
+                      handleAddCatalogModel={handleAddCatalogModel}
+                      addModelProvider={addModelProvider}
+                      setAddModelProvider={setAddModelProvider}
+                      addModelId={addModelId}
+                      setAddModelId={setAddModelId}
+                      addModelName={addModelName}
+                      setAddModelName={setAddModelName}
+                      addingCatalogModel={addingCatalogModel}
+                    />
+                  </>
                 )}
                 {category === 'personalisation' && (
                   <PersonalisationPanel
@@ -534,8 +629,6 @@ function ProviderPanel({
   setNimKey,
   openrouterKey,
   setOpenrouterKey,
-  customModelId,
-  setCustomModelId,
   clearNim,
   setClearNim,
   clearOpenrouter,
@@ -543,14 +636,6 @@ function ProviderPanel({
   runTest,
   testing,
   test,
-  customModels,
-  newModelName,
-  setNewModelName,
-  newModelId,
-  setNewModelId,
-  addingModel,
-  addModel,
-  removeModel,
 }: {
   settings: SettingsSnapshot;
   provider: 'auto' | 'nim' | 'openrouter';
@@ -559,8 +644,6 @@ function ProviderPanel({
   setNimKey: (value: string) => void;
   openrouterKey: string;
   setOpenrouterKey: (value: string) => void;
-  customModelId: string;
-  setCustomModelId: (value: string) => void;
   clearNim: boolean;
   setClearNim: (value: boolean) => void;
   clearOpenrouter: boolean;
@@ -568,47 +651,13 @@ function ProviderPanel({
   runTest: () => void;
   testing: boolean;
   test: TestResult | null;
-  customModels: CustomModel[];
-  newModelName: string;
-  setNewModelName: (value: string) => void;
-  newModelId: string;
-  setNewModelId: (value: string) => void;
-  addingModel: boolean;
-  addModel: () => void;
-  removeModel: (modelId: string) => void;
 }) {
   return (
-    <section className="settings-section">
+    <section className="settings-section provider-section">
       <div className="section-title">
         <KeyRound size={17} />
         <h3>Model provider</h3>
       </div>
-      <p className="section-note">
-        One curated model (Nemotron 3.5 VL Super), served by either NVIDIA NIM or OpenRouter. Auto
-        uses NIM when a key is present, then falls back to OpenRouter.
-      </p>
-
-      <div className="provider-grid">
-        {(
-          [
-            ['auto', 'Auto', 'Best available key'],
-            ['nim', 'NVIDIA NIM', 'Free developer credits'],
-            ['openrouter', 'OpenRouter', 'Free :free endpoint'],
-          ] as const
-        ).map(([value, label, hint]) => (
-          <button
-            key={value}
-            type="button"
-            className={`provider-card ${provider === value ? 'is-active' : ''}`}
-            onClick={() => setProvider(value)}
-          >
-            <span className="provider-check">{provider === value && <Check size={13} />}</span>
-            <strong>{label}</strong>
-            <span>{hint}</span>
-          </button>
-        ))}
-      </div>
-
       <div className="key-grid">
         <label className="field">
           <span className="field-label">
@@ -681,84 +730,6 @@ function ProviderPanel({
         </label>
       </div>
 
-      <label className="field">
-        <span className="field-label">Default model ID</span>
-        <input
-          type="text"
-          value={customModelId}
-          onChange={(event) => setCustomModelId(event.target.value)}
-          placeholder="e.g. nvidia/nemotron-3.5-super-vl-120b-a12b"
-          spellCheck={false}
-        />
-        <span className="field-foot">
-          Override the default model ID. Leave empty to use the provider default.
-        </span>
-      </label>
-
-      <div className="section-title" style={{ marginTop: 20 }}>
-        <Plus size={17} />
-        <h3>Add custom model</h3>
-      </div>
-      <p className="section-note">
-        Add any model ID from NIM or OpenRouter so it appears in the message box model picker.
-      </p>
-      <div className="two-col">
-        <label className="field">
-          <span className="field-label">Name</span>
-          <input
-            type="text"
-            value={newModelName}
-            onChange={(event) => setNewModelName(event.target.value)}
-            placeholder="e.g. My Nemotron"
-          />
-        </label>
-        <label className="field">
-          <span className="field-label">Model ID</span>
-          <input
-            type="text"
-            value={newModelId}
-            onChange={(event) => setNewModelId(event.target.value)}
-            placeholder="e.g. nvidia/nemotron-3.5-super-vl-120b-a12b"
-          />
-        </label>
-      </div>
-      <div className="test-row">
-        <button
-          type="button"
-          className="btn-tonal"
-          onClick={addModel}
-          disabled={addingModel || !newModelName.trim() || !newModelId.trim()}
-        >
-          {addingModel ? <Loader2 size={15} className="spin" /> : <Plus size={15} />}
-          Add model
-        </button>
-      </div>
-
-      {customModels.length > 0 && (
-        <div className="settings-section">
-          <div className="section-title">
-            <FileText size={17} />
-            <h3>Your custom models</h3>
-          </div>
-          <div className="custom-model-list">
-            {customModels.map((model) => (
-              <div key={model.model_id} className="custom-model-item">
-                <span className="custom-model-name">{model.name}</span>
-                <code className="custom-model-id">{model.model_id}</code>
-                <button
-                  type="button"
-                  className="icon-btn danger"
-                  onClick={() => removeModel(model.model_id)}
-                  aria-label={`Remove ${model.name}`}
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       <div className="test-row">
         <button type="button" className="btn-tonal" onClick={runTest} disabled={testing}>
           {testing ? <Loader2 size={15} className="spin" /> : <KeyRound size={15} />}
@@ -770,6 +741,241 @@ function ProviderPanel({
             {test.ok ? test.detail : test.error}
           </span>
         )}
+      </div>
+    </section>
+  );
+}
+
+function ModelCatalogPanel({
+  settings,
+  catalogModels,
+  setCatalogModels,
+  catalogSearch,
+  setCatalogSearch,
+  syncing,
+  handleSyncCatalog,
+  handleToggleCatalog,
+  handleSetDefaultCatalog,
+  handleAddCatalogModel,
+  addModelProvider,
+  setAddModelProvider,
+  addModelId,
+  setAddModelId,
+  addModelName,
+  setAddModelName,
+  addingCatalogModel,
+}: {
+  settings: SettingsSnapshot | null;
+  catalogModels: CatalogModel[];
+  setCatalogModels: (value: CatalogModel[]) => void;
+  catalogSearch: string;
+  setCatalogSearch: (value: string) => void;
+  syncing: boolean;
+  handleSyncCatalog: () => void;
+  handleToggleCatalog: (catalog_id: string, enabled: boolean) => void;
+  handleSetDefaultCatalog: (catalog_id: string) => void;
+  handleAddCatalogModel: () => void;
+  addModelProvider: 'nim' | 'openrouter';
+  setAddModelProvider: React.Dispatch<React.SetStateAction<'nim' | 'openrouter'>>;
+  addModelId: string;
+  setAddModelId: React.Dispatch<React.SetStateAction<string>>;
+  addModelName: string;
+  setAddModelName: React.Dispatch<React.SetStateAction<string>>;
+  addingCatalogModel: boolean;
+}) {
+  const providerById = new Map<string, ProviderInfo>(
+    (settings?.providers ?? []).map((p) => [p.id, p]),
+  );
+  const available = new Set<string>(
+    (settings?.providers ?? []).filter((p) => p.available).map((p) => p.id),
+  );
+  const q = catalogSearch.trim().toLowerCase();
+
+  const providerName = (id: string) => providerById.get(id)?.label ?? id;
+
+  const defaultModel = catalogModels.find((m) => m.is_default);
+  const enabledModels = catalogModels.filter((m) => m.enabled && !m.is_default);
+  const disabledModels = catalogModels.filter((m) => !m.enabled);
+
+  const sortByName = (a: CatalogModel, b: CatalogModel) =>
+    a.name.localeCompare(b.name);
+
+  const [showAll, setShowAll] = useState(false);
+
+  // When searching, show all matching models regardless of enabled state.
+  // Otherwise: default first, then enabled alphabetical, then disabled
+  // (only when Show all has been clicked).
+  const visibleCatalog = useMemo(() => {
+    const hasSearch = q.length > 0;
+    let items: CatalogModel[] = [];
+    if (defaultModel) items.push(defaultModel);
+    items = items.concat(enabledModels.sort(sortByName));
+    if (hasSearch || showAll) {
+      items = items.concat(disabledModels.sort(sortByName));
+    }
+    if (!hasSearch) return items;
+    return items.filter(
+      (m) =>
+        m.name.toLowerCase().includes(q) ||
+        m.model_id.toLowerCase().includes(q) ||
+        m.provider.toLowerCase().includes(q),
+    );
+  }, [catalogModels, defaultModel, enabledModels, disabledModels, showAll, q]);
+
+  const starTitle = (model: CatalogModel) => {
+    if (!model.enabled) return 'Enable this model to make it the default';
+    return model.is_default ? 'Default model' : 'Set as default';
+  };
+
+  return (
+    <section className="settings-section catalog-section">
+      <div className="section-title">
+        <FileText size={17} />
+        <h3>Model catalog</h3>
+      </div>
+      <p className="section-note">
+        Enable the models you want to use and pick a default (filled star). Only
+        enabled models appear in the message composer. The model ID shown is
+        what's sent to the provider API — it is never renamed.
+      </p>
+      <div className="catalog-toolbar">
+        <button
+          type="button"
+          className="btn-tonal"
+          onClick={handleSyncCatalog}
+          disabled={syncing}
+        >
+          {syncing ? <Loader2 size={15} className="spin" /> : <RefreshCw size={15} />}
+          Sync from OpenRouter
+        </button>
+        <div className="catalog-search">
+          <Search size={16} />
+          <input
+            type="text"
+            value={catalogSearch}
+            onChange={(event) => setCatalogSearch(event.target.value)}
+            placeholder="Search for a model…"
+          />
+        </div>
+      </div>
+      {visibleCatalog.length === 0 ? (
+        <p className="section-note">No models match your search.</p>
+      ) : (
+        <>
+          {visibleCatalog.map((model) => {
+            const isDefault = model.is_default;
+            const isEnabled = model.enabled;
+            const showStar = isEnabled && !isDefault;
+            const provider = providerName(model.provider);
+            return (
+              <div
+                key={model.id}
+                className={`catalog-card ${isEnabled ? '' : 'catalog-card-disabled'}`}
+              >
+                <div className="catalog-card-row1">
+                  <span className="catalog-card-name">{model.name}</span>
+                  <button
+                    type="button"
+                    className={`catalog-star ${isDefault ? 'filled' : ''}`}
+                    disabled={!isEnabled}
+                    onClick={() => {
+                      if (!isEnabled) return;
+                      handleSetDefaultCatalog(model.id);
+                    }}
+                    aria-label={starTitle(model)}
+                    title={starTitle(model)}
+                  >
+                    {isDefault ? (
+                      <Star size={16} className="star-filled" />
+                    ) : showStar ? (
+                      <Star size={16} className="star-empty" />
+                    ) : null}
+                  </button>
+                </div>
+                <div className="catalog-card-row2">
+                  <code className="catalog-card-id">{model.model_id}</code>
+                  <label className="catalog-toggle">
+                    <input
+                      type="checkbox"
+                      checked={isEnabled}
+                      onChange={(event) =>
+                        handleToggleCatalog(model.id, event.target.checked)
+                      }
+                      disabled={!available.has(model.provider)}
+                    />
+                    <span className="catalog-toggle-thumb" />
+                  </label>
+                  <span className="catalog-card-provider">{provider}</span>
+                </div>
+              </div>
+            );
+          })}
+          {!q && disabledModels.length > 0 && (
+            <button
+              type="button"
+              className="btn-tonal catalog-show-all"
+              onClick={() => setShowAll(!showAll)}
+            >
+              {showAll ? 'Hide all models' : `Show all models (${disabledModels.length} disabled)`}
+            </button>
+          )}
+        </>
+      )}
+
+      <div className="catalog-add">
+        <div className="section-title" style={{ marginTop: 24 }}>
+          <Plus size={17} />
+          <h3>Add model to catalog</h3>
+        </div>
+        <p className="section-note">
+          Manually add any model ID from NVIDIA NIM or OpenRouter (useful for
+          providers without a public model list). The model is added disabled.
+        </p>
+        <div className="two-col">
+          <label className="field">
+            <span className="field-label">Provider</span>
+            <select
+              value={addModelProvider}
+              onChange={(event) => setAddModelProvider(event.target.value as 'nim' | 'openrouter')}
+            >
+              <option value="nim">NVIDIA NIM</option>
+              <option value="openrouter">OpenRouter</option>
+            </select>
+          </label>
+          <label className="field">
+            <span className="field-label">Model ID</span>
+            <input
+              type="text"
+              value={addModelId}
+              onChange={(event) => setAddModelId(event.target.value)}
+              placeholder="e.g. nvidia/nemotron-3.5-super-vl-120b-a12b"
+            />
+          </label>
+        </div>
+        <label className="field">
+          <span className="field-label">Display name (optional)</span>
+          <input
+            type="text"
+            value={addModelName}
+            onChange={(event) => setAddModelName(event.target.value)}
+            placeholder="e.g. Nemotron 3.5 Super VL"
+          />
+        </label>
+        <div className="test-row">
+          <button
+            type="button"
+            className="btn-tonal"
+            onClick={handleAddCatalogModel}
+            disabled={addingCatalogModel || !addModelId.trim()}
+          >
+            {addingCatalogModel ? (
+              <Loader2 size={15} className="spin" />
+            ) : (
+              <Plus size={15} />
+            )}
+            Add model
+          </button>
+        </div>
       </div>
     </section>
   );
@@ -840,8 +1046,8 @@ function PersonalisationPanel({
           </label>
         </div>
         <p className="section-note">
-          {settings.model.name} · {settings.model.subtitle}. Up to {settings.max_tool_steps} tool
-          steps per turn.
+          Default: {settings.default_model?.name ?? 'Nemotron 3.5 Super VL'}. Up to
+          {settings.max_tool_steps} tool steps per turn.
         </p>
       </section>
 

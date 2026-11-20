@@ -36,14 +36,14 @@ Nexus is a single FastAPI process serving a React UI. This document describes th
 | `db.py` | SQLite persistence (aiosqlite), schema, migrations, encryption |
 | `crypto.py` | Fernet at-rest encryption for sensitive DB fields |
 | `agent.py` | Streaming tool-use loop: context building, tool calling, SSE emission, title generation |
-| `providers.py` | Curated model registry (Nemotron), provider resolution, OpenAI-compatible streaming client, retry policy |
+| `providers.py` | Model catalog routing + provider resolution, OpenAI-compatible streaming client, retry policy |
 | `retry.py` | Retry/rate-limit handling: `RetryPolicy`, `parse_retry_after_ms`, `is_retryable`, `next_delay` |
 | `prompt.py` | System prompt |
 | `media.py` | Render images/PDF pages as native visual content |
 | `routes/chats.py` | Chat, message, task, version, and SSE-stream endpoints |
 | `routes/files.py` | Upload handling and read-only file serving |
 | `routes/notes.py` | User notes CRUD |
-| `routes/settings.py` | Settings, health, auth, custom models |
+| `routes/settings.py` | Settings, health, auth, model catalog, custom models |
 | `tools/base.py` | Tool registry, `Tool`, `ToolContext`, `ToolResult` |
 | `tools/files.py` | `write_file`, `read_file`, `list_files` |
 | `tools/sandbox.py` | Isolated Podman container execution |
@@ -68,8 +68,8 @@ React + TypeScript + Vite, packaged with Capacitor for Android.
 
 ## Data flow — one chat turn
 
-1. Frontend `POST /api/chats/{chat_id}/messages` with content + attachments.
-2. Backend creates a user message and an assistant message (version 1), starts a run, returns an SSE stream.
+1. Frontend `POST /api/chats/{chat_id}/messages` with content + attachments, plus optional `model` and `provider`.
+2. Backend resolves the chat's model/provider against the model catalog (`model_catalog` table) and streams from the chosen provider.
 3. `agent.run_turn` builds context from the database (recent window, up to 350k chars, ≤70 messages, ≤6 images), adds the system prompt (with user notes and custom instructions), and streams from the provider.
 4. On tool calls, the backend executes the tool, emits `tool_call`/`tool_result` SSE events, appends tool messages to the context, and continues the loop (up to `max_tool_steps`).
 5. On completion, `update_message` writes the active version, a title is generated on the first turn, and a `done` event is emitted with version info.
@@ -77,7 +77,11 @@ React + TypeScript + Vite, packaged with Capacitor for Android.
 
 ## Database
 
-SQLite with WAL journal, foreign keys, and secure_delete. Tables: `chats`, `messages`, `message_versions`, `tasks`, `uploads`, `settings`, `user_notes`, `custom_models`. Sensitive columns are encrypted at rest. Migrations run on startup (duration_ms column, message_versions table, plaintext encryption).
+SQLite with WAL journal, foreign keys, and secure_delete. Tables: `chats`, `messages`, `message_versions`, `tasks`, `uploads`, `settings`, `user_notes`, `custom_models`, `model_catalog`. Sensitive columns are encrypted at rest. Migrations run on startup (duration_ms column, message_versions table, plaintext encryption, model_catalog table).
+
+### Model catalog
+
+Nexus is model-agnostic. Instead of a hardcoded registry, available models live in the `model_catalog` table (`provider`, `model_id`, `name`, `enabled`, `is_default`, `source`). Nemotron 3.5 Super VL is seeded as **enabled + default** on NIM and **enabled** on OpenRouter so a fresh instance works out of the box. Users search the catalog, enable models they want, and pick one as default; only enabled models appear in the message composer dropdown. The catalog can be synced from OpenRouter's public `/models` endpoint via `POST /api/models/catalog/sync`, or entries can be added manually for NIM.
 
 ## Versioning
 

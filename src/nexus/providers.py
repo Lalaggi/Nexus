@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any, AsyncIterator, Awaitable, Callable
 
 import httpx
@@ -41,16 +41,6 @@ class ProviderSpec:
 
 
 @dataclass(frozen=True)
-class CuratedModel:
-    id: str
-    name: str
-    subtitle: str
-    description: str
-    providers: dict[str, ProviderSpec]
-    supports_vision: bool = True
-
-
-@dataclass(frozen=True)
 class ResolvedModel:
     """A model fully resolved to a provider, model id, and API key."""
 
@@ -61,44 +51,10 @@ class ResolvedModel:
     supports_vision: bool = True
 
 
-NEMOTRON = CuratedModel(
-    id="nemotron-3.5-super-vl",
-    name="Nemotron 3.5 VL Super",
-    subtitle="NVIDIA · vision + tools",
-    description=(
-        "NVIDIA's 120B vision-language model with a 1M-token context, native tool "
-        "calling, and strong document, chart, and UI understanding. Free on both NIM "
-        "and OpenRouter."
-    ),
-    providers={
-        "nim": ProviderSpec(
-            id="nim",
-            label="NVIDIA NIM",
-            base_url="https://integrate.api.nvidia.com/v1",
-            model_id="nvidia/nemotron-3.5-super-vl-120b-a12b",
-            key_name="nim_api_key",
-            docs="https://build.nvidia.com/nvidia/nemotron-3-5-super-vl-120b-a12b",
-        ),
-        "openrouter": ProviderSpec(
-            id="openrouter",
-            label="OpenRouter",
-            base_url="https://openrouter.ai/api/v1",
-            model_id="nvidia/nemotron-3.5-super-vl:free",
-            key_name="openrouter_api_key",
-            docs="https://openrouter.ai/nvidia/nemotron-3.5-super-vl:free",
-        ),
-    },
-)
-
-MODELS: list[CuratedModel] = [NEMOTRON]
-DEFAULT_MODEL = NEMOTRON.id
-
-
-def get_model(model_id: str) -> CuratedModel | None:
-    for model in MODELS:
-        if model.id == model_id:
-            return model
-    return None
+# Fallback model id used when a chat has no explicit model selection. The
+# catalog (seeded with Nemotron on NIM + OpenRouter) is the source of truth for
+# available models; this is only a last-resort default.
+DEFAULT_MODEL = "nvidia/nemotron-3.5-super-vl-120b-a12b"
 
 
 async def api_keys(db: Database) -> dict[str, str]:
@@ -114,103 +70,70 @@ async def preferred_provider(db: Database) -> str:
     return value if value in {"auto", "nim", "openrouter"} else "auto"
 
 
+_PROVIDER_DEFAULTS = {
+    "nim": {
+        "label": "NVIDIA NIM",
+        "default_base_url": "https://integrate.api.nvidia.com/v1",
+        "docs": "https://build.nvidia.com/",
+    },
+    "openrouter": {
+        "label": "OpenRouter",
+        "default_base_url": "https://openrouter.ai/api/v1",
+        "docs": "https://openrouter.ai/models",
+    },
+}
+
+
 async def resolve_provider(
     db: Database,
-    model_id: str | None = None,
-    requested: str | None = None,
+    provider: str,
+    model_id: str,
 ) -> ResolvedModel:
-    """Resolve a model + provider choice to a concrete ProviderSpec and API key.
+    """Resolve a provider + model ID to a concrete ProviderSpec and API key.
 
-    ``model_id`` is the model the user selected (curated model id or a custom
-    model_id such as ``inclusionai/ling-3.2-flash:free``). ``requested`` is the
-    provider preference ("nim", "openrouter", "auto", or a chat's stored provider).
-
-    Custom models always route through OpenRouter. Curated models (Nemotron) can
-    route through NIM or OpenRouter depending on the preference.
+    The model is expected to come from the enabled model catalog, so ``provider``
+    is explicit ("nim" or "openrouter") and ``model_id`` is the actual ID sent
+    to the provider API (e.g. ``nvidia/nemotron-3.5-super-vl-120b-a12b``).
     """
+    provider = (provider or "").strip().lower()
+    if provider not in _PROVIDER_DEFAULTS:
+        raise ProviderError(f"Unknown provider: {provider or '<none>'}")
+
+    # Back-compat: if a stored model id is a curated shorthand (no provider
+    # prefix, e.g. "nemotron-3.5-super-vl"), resolve it to the default enabled
+    # catalog model for this provider so older chats keep working.
+    if "/" not in model_id:
+        catalog_model = await db.get_enabled_model_id_for_provider(provider)
+        if catalog_model:
+            model_id = catalog_model
+
     keys = await api_keys(db)
-    settings_pref = await preferred_provider(db)
-
-    # A chat's explicit provider ("nim"/"openrouter") takes precedence.
-    # "auto" defers to the settings-level preference.
-    preference = requested if requested and requested != "auto" else settings_pref
-    preference = (preference or "").strip().lower()
-    if preference not in {"auto", "nim", "openrouter"}:
-        preference = "auto"
-
-    model = get_model(model_id) if model_id else None
-
-    # Custom models (not in the curated registry) always go through OpenRouter.
-    if model is None:
-        if not model_id:
-            model_id = DEFAULT_MODEL
-            model = NEMOTRON
-        else:
-            # Custom model: route via OpenRouter with the user's model id.
-            key = keys.get("openrouter", "")
-            if not key:
-                raise ProviderError(
-                    "Custom models require an OpenRouter API key. Add one in "
-                    "Settings → Provider."
-                )
-            spec = ProviderSpec(
-                id="openrouter",
-                label="OpenRouter",
-                base_url=(
-                    CONFIG.openrouter_base_url.rstrip("/")
-                    if CONFIG.openrouter_base_url.strip()
-                    else "https://openrouter.ai/api/v1"
-                ),
-                model_id=model_id,
-                key_name="openrouter_api_key",
-                docs="https://openrouter.ai/models",
-            )
-            return ResolvedModel(
-                name=model_id,
-                model_id=model_id,
-                provider=spec,
-                key=key,
-                # Capability metadata for arbitrary OpenRouter models is part of
-                # the planned provider rework. Until then, assume custom models
-                # can accept image parts; text-only models will simply reject
-                # them if asked to read a picture.
-                supports_vision=True,
-            )
-
-    # Curated model (Nemotron): choose provider based on preference.
-    if preference == "auto":
-        order = ["nim", "openrouter"]
-    else:
-        order = [preference]
-
-    for provider_id in order:
-        key = keys.get(provider_id, "")
-        if not key:
-            continue
-        spec = model.providers[provider_id]
-        override = (
-            CONFIG.nim_base_url if provider_id == "nim" else CONFIG.openrouter_base_url
-        ).strip()
-        if override:
-            spec = replace(spec, base_url=override.rstrip("/"))
-        return ResolvedModel(
-            name=model.name,
-            model_id=spec.model_id,
-            provider=spec,
-            key=key,
-            supports_vision=model.supports_vision,
-        )
-
-    # No key available for any provider in the order.
-    if model is NEMOTRON:
+    key = keys.get(provider, "").strip()
+    if not key:
         raise ProviderError(
-            "No API key configured. Open Settings and add an NVIDIA NIM or "
-            "OpenRouter key. NIM keys are free at build.nvidia.com; OpenRouter "
-            "has a free Nemotron endpoint."
+            f"No API key configured for {provider}. Add one in Settings → Provider."
         )
-    raise ProviderError(
-        f"No API key configured for {provider.label}. Add one in "
-        "Settings → Provider."
+
+    meta = _PROVIDER_DEFAULTS[provider]
+    override = (
+        CONFIG.nim_base_url if provider == "nim" else CONFIG.openrouter_base_url
+    ).strip()
+    base_url = override.rstrip("/") if override else meta["default_base_url"]
+
+    spec = ProviderSpec(
+        id=provider,
+        label=meta["label"],
+        base_url=base_url,
+        model_id=model_id,
+        key_name=f"{provider}_api_key",
+        docs=meta["docs"],
+    )
+    return ResolvedModel(
+        name=model_id,
+        model_id=model_id,
+        provider=spec,
+        key=key,
+        supports_vision=True,
     )
 
 

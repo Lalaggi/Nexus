@@ -2605,11 +2605,60 @@ a {
   width: 100%;
   margin-top: 10px;
 }
+
+/* Material 3 filled text input / select — consistent density per m3 specs */
+.field input[type="text"],
+.field input[type="password"],
+.field input[type="number"],
+.field select {
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--shape-full);
+  background: var(--surface-container-low);
+  color: var(--on-surface);
+  font-size: 14px;
+  outline: none;
+  width: 100%;
+  transition:
+    border-color var(--dur-short) var(--ease-emphasized),
+    background var(--dur-short) var(--ease-emphasized);
+}
+.field input:focus,
+.field select:focus {
+  border-color: var(--primary);
+  background: var(--surface-container-high);
+}
+.field input::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+/* Catalog search input — match Material 3 text field density */
+.catalog-search input {
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--shape-full);
+  background: var(--surface-container-low);
+  color: var(--on-surface);
+  font-size: 13px;
+  outline: none;
+  width: 100%;
+  transition:
+    border-color var(--dur-short) var(--ease-emphasized),
+    background var(--dur-short) var(--ease-emphasized);
+}
+.catalog-search input:focus {
+  border-color: var(--primary);
+  background: var(--surface-container-high);
+}
+
 .test-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: 12px;
+  margin-top: 8px;
   flex-wrap: wrap;
 }
 .test-result {
@@ -2882,6 +2931,209 @@ a {
   min-height: 28px;
   display: grid;
   place-items: center;
+}
+
+/* ---------------------------------------------------------------- model catalog */
+.catalog-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.catalog-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 200px;
+}
+
+.catalog-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 20px;
+  background: var(--surface-container-low);
+  margin-bottom: 8px;
+}
+
+.catalog-card-disabled {
+  opacity: 0.55;
+}
+
+.catalog-card-row1,
+.catalog-card-row2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.catalog-card-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--on-surface);
+  min-width: 0;
+}
+
+.catalog-card-id {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--on-surface-variant);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  white-space: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.catalog-star {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: var(--shape-full);
+  display: grid;
+  place-items: center;
+  color: var(--on-surface-variant);
+  min-width: 40px;
+  min-height: 40px;
+  flex-shrink: 0;
+}
+
+.catalog-star:not(:disabled):hover {
+  background: var(--surface-container-hover);
+}
+
+.catalog-star:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.catalog-star .star-filled {
+  color: #f59e0b;
+}
+
+.catalog-star .star-empty {
+  color: #94a3b8;
+}
+
+.catalog-card-provider {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--shape-full);
+  background: var(--outline-variant);
+  color: var(--on-surface-variant);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.catalog-card-provider.nim {
+  background: rgba(120, 90, 220, 0.15);
+  color: var(--primary);
+}
+
+.catalog-card-provider.openrouter {
+  background: rgba(200, 90, 130, 0.15);
+  color: #c0392b;
+}
+
+/* Provider section card */
+.provider-section {
+  margin-bottom: 20px;
+}
+
+/* Material 3 switch (toggle) per m3.material.io/components/switch specs
+   Track: capsule, unchecked=colorOutline, checked=colorPrimaryContainer
+   Handle: circular, unchecked=colorOnSurface, checked=colorPrimary
+   Handle translates fully across track */
+.catalog-toggle {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.catalog-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.catalog-toggle::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 7px;
+  background: var(--outline-variant);
+  transition: background 0.2s var(--ease-emphasized);
+}
+
+.catalog-toggle-thumb {
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--on-surface-variant);
+  transition: transform 0.2s var(--ease-emphasized), background 0.2s var(--ease-emphasized);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+.catalog-toggle input:checked + .catalog-toggle-thumb {
+  transform: translateX(20px);
+  background: var(--primary);
+}
+
+.catalog-toggle input:checked ~ .catalog-toggle::before {
+  background: var(--primary-container);
+}
+
+.catalog-toggle input:disabled + .catalog-toggle-thumb {
+  background: #a9a9a9;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.catalog-toggle input:disabled ~ .catalog-toggle::before {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.catalog-card-provider {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 12px;
+  background: var(--outline-variant);
+  color: var(--on-surface-variant);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.catalog-card-provider.nim {
+  background: rgba(120, 90, 220, 0.15);
+  color: var(--primary);
+}
+
+.catalog-card-provider.openrouter {
+  background: rgba(200, 90, 130, 0.15);
+  color: #c0392b;
+}
+
+.catalog-show-all {
+  width: 100%;
+  margin-top: 4px;
 }
 
 /* ---------------------------------------------------------------- login */

@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from ..config import CONFIG
 from ..db import Database
-from ..providers import MODELS, NEMOTRON, api_keys, preferred_provider, resolve_provider
+from ..providers import api_keys, preferred_provider, resolve_provider
 from ..tools.sandbox import sandbox_status
 
 router = APIRouter(prefix="/api", tags=["settings"])
@@ -42,6 +42,20 @@ class TestBody(BaseModel):
 class CustomModelBody(BaseModel):
     name: str
     model_id: str
+
+
+class CatalogToggleBody(BaseModel):
+    enabled: bool
+
+
+class CatalogDefaultBody(BaseModel):
+    pass
+
+
+class CatalogAddBody(BaseModel):
+    provider: str
+    model_id: str
+    name: str | None = None
 
 
 class LoginBody(BaseModel):
@@ -78,28 +92,52 @@ async def _snapshot(request: Request) -> dict:
     custom_instructions = await db.get_setting("custom_instructions", "")
     custom_model_id = await db.get_setting("custom_model_id", "")
     custom_models = await db.list_custom_models()
+    _provider_docs = {
+        "nim": "https://build.nvidia.com/",
+        "openrouter": "https://openrouter.ai/models",
+    }
+    _provider_labels = {
+        "nim": "NVIDIA",
+        "openrouter": "OpenRouter",
+    }
     providers = []
-    for spec in NEMOTRON.providers.values():
+    for pid in ("nim", "openrouter"):
         providers.append(
             {
-                "id": spec.id,
-                "label": spec.label,
-                "model_id": spec.model_id,
-                "available": bool(keys.get(spec.id)),
-                "key_hint": _hint(keys.get(spec.id, "")),
-                "docs": spec.docs,
+                "id": pid,
+                "label": _provider_labels[pid],
+                "available": bool(keys.get(pid)),
+                "key_hint": _hint(keys.get(pid, "")),
+                "docs": _provider_docs[pid],
             }
         )
+    catalog = await db.list_model_catalog()
+    default_entry = await db.get_default_model_catalog_entry()
     return {
         "provider": provider,
         "providers": providers,
-        "model": {
-            "id": NEMOTRON.id,
-            "name": NEMOTRON.name,
-            "subtitle": NEMOTRON.subtitle,
-            "description": NEMOTRON.description,
-        },
-        "models": [{"id": m.id, "name": m.name} for m in MODELS],
+        "models": [
+            {
+                "id": row["id"],
+                "provider": row["provider"],
+                "model_id": row["model_id"],
+                "name": row["name"],
+                "enabled": bool(row["enabled"]),
+                "is_default": bool(row["is_default"]),
+                "source": row["source"],
+            }
+            for row in catalog
+        ],
+        "default_model": (
+            {
+                "id": default_entry["id"],
+                "provider": default_entry["provider"],
+                "model_id": default_entry["model_id"],
+                "name": default_entry["name"],
+            }
+            if default_entry
+            else None
+        ),
         "keys": {
             "nim": {"set": bool(keys.get("nim")), "hint": _hint(keys.get("nim", ""))},
             "openrouter": {
@@ -160,31 +198,47 @@ async def put_settings(request: Request, body: SettingsBody) -> dict:
 @router.post("/settings/test")
 async def test_provider(request: Request, body: TestBody) -> dict:
     db = db_of(request)
-    requested = body.provider or await preferred_provider(db)
+    requested = (body.provider or await preferred_provider(db)).strip().lower()
+    if requested not in {"nim", "openrouter", "auto"}:
+        requested = "auto"
+    if requested == "auto":
+        default_entry = await db.get_default_model_catalog_entry()
+        requested = (default_entry or {}).get("provider") or "nim"
+
+    model_id = None
+    for row in await db.list_model_catalog(enabled_only=True):
+        if row["provider"] == requested:
+            model_id = row["model_id"]
+            break
+    if not model_id:
+        return JSONResponse(
+            {"ok": False, "error": f"No enabled models for {requested}."},
+            status_code=400,
+        )
     try:
-        model, provider, key = await resolve_provider(db, requested)
+        resolved = await resolve_provider(db, requested, model_id)
     except Exception as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.get(
-                f"{provider.base_url}/models",
-                headers={"Authorization": f"Bearer {key}"},
+                f"{resolved.provider.base_url}/models",
+                headers={"Authorization": f"Bearer {resolved.key}"},
             )
             response.raise_for_status()
             payload = response.json()
         ids = {item.get("id") for item in payload.get("data", [])}
-        found = provider.model_id in ids
+        found = resolved.model_id in ids
         return {
             "ok": True,
-            "provider": provider.id,
-            "label": provider.label,
-            "model": model.name,
+            "provider": resolved.provider.id,
+            "label": resolved.provider.label,
+            "model": resolved.name,
             "model_visible": found,
             "detail": (
-                f"Connected to {provider.label}. {provider.model_id} is listed."
+                f"Connected to {resolved.provider.label}. {resolved.model_id} is listed."
                 if found
-                else f"Connected to {provider.label}, but {provider.model_id} was not in /models. It may still work."
+                else f"Connected to {resolved.provider.label}, but {resolved.model_id} was not in /models. It may still work."
             ),
         }
     except Exception as exc:
@@ -217,6 +271,126 @@ async def delete_custom_model_endpoint(request: Request, model_id: str) -> dict:
     if existing is None:
         raise HTTPException(404, "Custom model not found.")
     await db.delete_custom_model(model_id)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- model catalog
+@router.get("/models/catalog")
+async def list_model_catalog_endpoint(request: Request) -> list[dict]:
+    db = db_of(request)
+    return await db.list_model_catalog()
+
+
+class SyncBody(BaseModel):
+    provider: str | None = None
+
+
+@router.post("/models/catalog/sync")
+async def sync_model_catalog_endpoint(
+    request: Request, body: SyncBody | None = None
+) -> dict:
+    """Fetch OpenRouter's public model list and upsert it into the catalog.
+
+    NIM does not publish a comparably open model list, so NIM entries are
+    added manually through the settings UI; this sync only covers OpenRouter.
+    """
+    db = db_of(request)
+    keys = await api_keys(db)
+    key = keys.get("openrouter", "").strip()
+    if not key:
+        raise HTTPException(400, "An OpenRouter API key is required to sync models.")
+    base_url = (
+        CONFIG.openrouter_base_url.rstrip("/")
+        if CONFIG.openrouter_base_url.strip()
+        else "https://openrouter.ai/api/v1"
+    )
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                f"{base_url}/models",
+                headers={"Authorization": f"Bearer {key}"},
+            )
+            response.raise_for_status()
+            payload = response.json()
+    except Exception as exc:
+        raise HTTPException(400, f"OpenRouter sync failed: {exc}") from exc
+
+    synced = 0
+    for item in payload.get("data", []):
+        model_id = item.get("id")
+        if not model_id:
+            continue
+        # OpenRouter ids look like "author/name" or "author/name:free".
+        name = item.get("name") or model_id.split("/")[-1]
+        await db.upsert_model_catalog_entry(
+            "openrouter", model_id, name, source="discovered"
+        )
+        synced += 1
+    return {"ok": True, "synced": synced}
+
+
+@router.post("/models/catalog")
+async def add_model_catalog_endpoint(
+    request: Request, body: CatalogAddBody
+) -> dict:
+    """Manually add a model to the catalog.
+
+    Used for providers like NIM that do not publish an open model list. The
+    model is added disabled by default so it does not appear in the composer
+    until the user enables it.
+    """
+    db = db_of(request)
+    provider = body.provider.strip().lower()
+    if provider not in {"nim", "openrouter"}:
+        raise HTTPException(400, "Provider must be nim or openrouter.")
+    name = body.name.strip() if body.name else body.model_id.split("/")[-1]
+    entry = await db.upsert_model_catalog_entry(
+        provider, body.model_id.strip(), name, source="custom"
+    )
+    return entry
+
+
+@router.patch("/models/catalog/{catalog_id}/toggle")
+async def toggle_model_catalog_endpoint(
+    request: Request, catalog_id: str, body: CatalogToggleBody
+) -> dict:
+    db = db_of(request)
+    entry = await db.get_model_catalog_entry(catalog_id)
+    if entry is None:
+        raise HTTPException(404, "Catalog entry not found.")
+    await db.set_model_catalog_enabled(catalog_id, body.enabled)
+    # If this was the default and it's being disabled, pick a new default.
+    if body.enabled and entry.get("is_default"):
+        pass  # remains default
+    if not body.enabled and entry.get("is_default"):
+        remaining = await db.list_model_catalog(enabled_only=True)
+        if remaining:
+            new_default = remaining[0]
+            await db.set_model_catalog_default(new_default["id"])
+    return await db.get_model_catalog_entry(catalog_id)  # type: ignore[return-value]
+
+
+@router.patch("/models/catalog/{catalog_id}/default")
+async def set_model_catalog_default_endpoint(
+    request: Request, catalog_id: str
+) -> dict:
+    db = db_of(request)
+    entry = await db.get_model_catalog_entry(catalog_id)
+    if entry is None:
+        raise HTTPException(404, "Catalog entry not found.")
+    if not entry.get("enabled"):
+        raise HTTPException(400, "Only enabled models can be the default.")
+    await db.set_model_catalog_default(catalog_id)
+    return await db.get_model_catalog_entry(catalog_id)  # type: ignore[return-value]
+
+
+@router.delete("/models/catalog/{catalog_id}")
+async def delete_model_catalog_endpoint(request: Request, catalog_id: str) -> dict:
+    db = db_of(request)
+    entry = await db.get_model_catalog_entry(catalog_id)
+    if entry is None:
+        raise HTTPException(404, "Catalog entry not found.")
+    await db.delete_model_catalog_entry(catalog_id)
     return {"ok": True}
 
 

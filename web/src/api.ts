@@ -1,4 +1,4 @@
-import type { Attachment, CustomModel, StreamEvent } from './types';
+import type { Attachment, CatalogModel, CustomModel, StreamEvent } from './types';
 import { apiUrl, authHeaders, fileUrl, withFileUrls } from './server';
 
 export class ApiError extends Error {
@@ -227,6 +227,59 @@ export async function addCustomModel(name: string, model_id: string): Promise<Cu
 export async function deleteCustomModel(model_id: string): Promise<void> {
   return api(`/api/models/custom/${encodeURIComponent(model_id)}`, {
     method: 'DELETE',
+  });
+}
+
+/* ------------------------------------------------------------------ model catalog */
+
+export async function listCatalogModels(): Promise<CatalogModel[]> {
+  return api<CatalogModel[]>('/api/models/catalog');
+}
+
+export interface CatalogToggleBody {
+  enabled: boolean;
+}
+
+export async function toggleCatalogModel(
+  catalog_id: string,
+  enabled: boolean,
+): Promise<CatalogModel> {
+  return api<CatalogModel>(`/api/models/catalog/${encodeURIComponent(catalog_id)}/toggle`, {
+    method: 'PATCH',
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function setCatalogModelDefault(catalog_id: string): Promise<CatalogModel> {
+  return api<CatalogModel>(`/api/models/catalog/${encodeURIComponent(catalog_id)}/default`, {
+    method: 'PATCH',
+  });
+}
+
+export async function deleteCatalogModel(catalog_id: string): Promise<void> {
+  return api(`/api/models/catalog/${encodeURIComponent(catalog_id)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function syncCatalogModels(): Promise<{ ok: boolean; synced: number }> {
+  return api<{ ok: boolean; synced: number }>('/api/models/catalog/sync', {
+    method: 'POST',
+  });
+}
+
+export interface CatalogAddBody {
+  provider: string;
+  model_id: string;
+  name?: string;
+}
+
+export async function addCatalogModel(
+  body: CatalogAddBody,
+): Promise<CatalogModel> {
+  return api<CatalogModel>('/api/models/catalog', {
+    method: 'POST',
+    body: JSON.stringify(body),
   });
 }
 

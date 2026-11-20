@@ -62,8 +62,6 @@ export default forwardRef<HTMLDivElement, {
     );
   }, [chats, query]);
 
-  const provider = settings?.provider === 'nim' ? 'NIM' : settings?.provider === 'openrouter' ? 'OpenRouter' : 'Auto';
-
   return (
     <aside ref={ref} className="sidebar">
       <div className="sidebar-top">
@@ -170,10 +168,6 @@ export default forwardRef<HTMLDivElement, {
         </span>
         <div className="user-meta">
           <span className="user-name">{settings?.user_name ?? 'User'}</span>
-          <span className="provider-label">
-            <i className={settings?.providers.some((p) => p.available) ? 'dot on' : 'dot'} />
-            {settings?.providers.some((p) => p.available) ? `Nemotron · ${provider}` : 'Add an API key'}
-          </span>
         </div>
         <button
           type="button"

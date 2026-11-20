@@ -20,9 +20,15 @@ List all chats, newest first, with message counts and previews.
 
 Create a new chat.
 
-**Body:** `{ title?, model? }`
+**Body:** `{ title?, model?, provider? }`
 
 **Response:** the created chat object.
+
+### `PATCH /api/chats/{chat_id}`
+
+Update title, goal, model, or provider.
+
+**Body:** `{ title?, goal?, model?, provider? }`
 
 ### `GET /api/chats/{chat_id}`
 
@@ -46,7 +52,7 @@ Delete a chat and its per-chat uploads, outputs, and workspace files.
 
 Send a user message and stream the assistant's response as SSE.
 
-**Body:** `{ content, attachment_ids[], model? }`
+**Body:** `{ content, attachment_ids[], model?, provider? }`
 
 **Response:** `text/event-stream`. Events:
 
@@ -111,6 +117,18 @@ Serve a chat file (outputs or uploads). Active content (HTML, SVG, JS, XML) is s
 
 CRUD for user notes: `GET`, `GET /{key}`, `POST`, `PATCH /{key}`, `DELETE /{key}`.
 
+## Model catalog — `/api/models/catalog`
+
+`GET /api/models/catalog` — list all catalog entries with `id`, `provider`, `model_id`, `name`, `enabled`, `is_default`, `source`.
+
+`POST /api/models/catalog/sync` — fetch OpenRouter's public `/models` list and upsert it into the catalog (requires an OpenRouter API key). NIM entries are added manually.
+
+`PATCH /api/models/catalog/{catalog_id}/toggle` — `{ enabled: boolean }` enable or disable a model. Disabling the current default picks a new default from the remaining enabled models.
+
+`PATCH /api/models/catalog/{catalog_id}/default` — set the given enabled model as the default (clears the default flag on all others). Only enabled models can be the default.
+
+`DELETE /api/models/catalog/{catalog_id}` — remove a catalog entry.
+
 ## Custom models — `/api/models/custom`
 
 `GET`, `POST { name, model_id }`, `DELETE /{model_id:path}`.
@@ -119,7 +137,7 @@ CRUD for user notes: `GET`, `GET /{key}`, `POST`, `PATCH /{key}`, `DELETE /{key}
 
 ### `GET /api/settings`
 
-Snapshot: provider, providers, model, keys, user name, temperature, custom instructions, custom model ID, custom models, sandbox status, paths, searxng URL, auth_required.
+Snapshot: provider, providers, models (full catalog with enabled/default flags), default_model, keys, user name, temperature, custom instructions, custom model ID, custom models, sandbox status, paths, searxng URL, auth_required.
 
 ### `PUT /api/settings`
 
@@ -127,7 +145,7 @@ Update provider, user name, temperature, custom instructions, custom model ID, A
 
 ### `POST /api/settings/test`
 
-Test a provider connection (hits `GET /models` on the provider base URL).
+Test a provider connection (hits `GET /models` on the provider base URL, using that provider's default enabled model).
 
 ## Health — `/api/health`
 
@@ -135,7 +153,7 @@ Returns `{ ok, searxng, sandbox, version }`. The sandbox field reports availabil
 
 ## Models — `/api/models`
 
-Lists curated models with per-provider availability.
+Lists catalog entries with `id`, `provider`, `model_id`, `name`, `enabled`, `is_default`, `source`.
 
 ## SSE event types
 
