@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   BarChart3,
   Check,
@@ -98,6 +98,26 @@ export default function SettingsDialog({
   });
   // Narrow-screen (phone) layout: below ~901px we use a bottom sheet + cards.
   const [narrow, setNarrow] = useState(typeof window !== 'undefined' && window.innerWidth <= 900);
+  // One ref per collapsible card so we can measure content height for animation.
+  const cardRefs = {
+    provider: useRef<HTMLDetailsElement>(null),
+    personalisation: useRef<HTMLDetailsElement>(null),
+    stats: useRef<HTMLDetailsElement>(null),
+    app: useRef<HTMLDetailsElement>(null),
+  };
+
+  // Smoothly expand/collapse a card's body by measuring its content height.
+  const animateCard = useCallback((id: Category, isOpen: boolean) => {
+    const el = cardRefs[id].current;
+    if (!el) return;
+    const body = el.querySelector('.settings-card-body') as HTMLElement | null;
+    if (!body) return;
+    if (isOpen) {
+      body.style.maxHeight = `${body.scrollHeight}px`;
+    } else {
+      body.style.maxHeight = '0';
+    }
+  }, []);
 
   useEffect(() => {
     const onResize = () => setNarrow(window.innerWidth <= 900);
@@ -134,7 +154,11 @@ export default function SettingsDialog({
     setCategory('provider');
     void refreshCustomModels();
     void refreshNotes();
-  }, [open, settings]);
+    // Animate any initially-open cards so they render at full height.
+    Object.entries(openCards).forEach(([id, isOpen]) => {
+      if (isOpen) animateCard(id as Category, true);
+    });
+  }, [open, settings, animateCard]);
 
   const refreshNotes = async () => {
     try {
@@ -280,11 +304,13 @@ export default function SettingsDialog({
           {narrow ? (
             <div className="settings-cards">
               <details
+                ref={cardRefs.provider}
                 className="settings-card"
                 open={openCards.provider}
                 onToggle={(event) => {
                   const isOpen = (event.target as HTMLDetailsElement).open;
                   setOpenCards((prev) => ({ ...prev, provider: isOpen }));
+                  animateCard('provider', isOpen);
                 }}
               >
                 <summary className="settings-card-summary">
@@ -322,11 +348,13 @@ export default function SettingsDialog({
               </details>
 
               <details
+                ref={cardRefs.personalisation}
                 className="settings-card"
                 open={openCards.personalisation}
                 onToggle={(event) => {
                   const isOpen = (event.target as HTMLDetailsElement).open;
                   setOpenCards((prev) => ({ ...prev, personalisation: isOpen }));
+                  animateCard('personalisation', isOpen);
                 }}
               >
                 <summary className="settings-card-summary">
@@ -355,11 +383,13 @@ export default function SettingsDialog({
               </details>
 
               <details
+                ref={cardRefs.stats}
                 className="settings-card"
                 open={openCards.stats}
                 onToggle={(event) => {
                   const isOpen = (event.target as HTMLDetailsElement).open;
                   setOpenCards((prev) => ({ ...prev, stats: isOpen }));
+                  animateCard('stats', isOpen);
                 }}
               >
                 <summary className="settings-card-summary">
@@ -373,11 +403,13 @@ export default function SettingsDialog({
 
               {/* Mobile-only: App Settings card with Change Server / sign out. */}
               <details
+                ref={cardRefs.app}
                 className="settings-card"
                 open={openCards.app}
                 onToggle={(event) => {
                   const isOpen = (event.target as HTMLDetailsElement).open;
                   setOpenCards((prev) => ({ ...prev, app: isOpen }));
+                  animateCard('app', isOpen);
                 }}
               >
                 <summary className="settings-card-summary">
