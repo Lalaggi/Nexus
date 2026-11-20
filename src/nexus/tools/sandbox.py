@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
+import logging
 import os
 import pwd
+import re
 import shutil
 import time
 import uuid
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from ..config import CONFIG
 from .base import Tool, ToolContext, ToolResult, register
@@ -190,6 +195,80 @@ def _sanitize_pythonpath(directory: Path) -> None:
             continue
 
 
+_PRIVATE_IP_RE = re.compile(
+    r"\b(?:"
+    r"(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])"
+    r"\.(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])"
+    r"\.(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])"
+    r"\.(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])"
+    r"|fe80:[0-9a-fA-F]{0,4}:"
+    r"|fc[0-9a-fA-F]:"
+    r"|ff[0-9a-fA-F]:"
+    r")"
+    r"|::1"
+)
+
+
+def _private_ip_literals(command_text: str) -> list[str]:
+    """Return any private/RFC1918/LAN IP literals found in a command string.
+
+    This catches raw IPv4 addresses in private ranges (10/8, 172.16/12,
+    192.168/16, 127/8, 169.254/16, 0.0.0.0, 224/4) and IPv6 loopback,
+    link-local, unique-local, and multicast addresses. It does not catch
+    hostnames or obfuscated forms — it is a defense-in-depth layer, not a
+    substitute for real network isolation.
+    """
+    found: list[str] = []
+    for match in _PRIVATE_IP_RE.finditer(command_text):
+        token = match.group(0)
+        if ":" in token:
+            found.append(token)
+            continue
+        try:
+            addr = ipaddress.IPv4Address(token)
+        except ValueError:
+            continue
+        if (
+            addr.is_private
+            or addr.is_loopback
+            or addr.is_link_local
+            or addr.is_multicast
+            or addr.is_unspecified
+            or addr.is_reserved
+        ):
+            found.append(token)
+    return found
+
+
+# Commands/patterns that reveal network topology or host internals. A rogue
+# model can use these to discover the gateway IP (bypassing the raw-IP blocker
+# above) and then target LAN services. These are blocked outright because
+# legitimate sandbox work rarely needs them.
+_NETWORK_RECON_RE = re.compile(
+    r"\b(?:"
+    r"ip\s+(?:route|addr|link|neigh|rule)"
+    r"|ifconfig"
+    r"|netstat"
+    r"|ss\s"
+    r"|/proc/net/(?:route|arp|tcp|udp|netlink|snmp|dev|unix|igmp|packet)"
+    r"|/proc/[0-9]+/mountinfo"
+    r"|/proc/self/mountinfo"
+    r"|/proc/1/mountinfo"
+    r")"
+)
+
+
+def _network_recon_patterns(command_text: str) -> list[str]:
+    """Return any network reconnaissance patterns found in a command string.
+
+    These patterns let a model discover the gateway IP, routing table, or
+    host mount structure — information used to target LAN services or escape
+    via host path leakage. Blocked outright because normal sandbox work
+    doesn't need them.
+    """
+    return _NETWORK_RECON_RE.findall(command_text)
+
+
 async def run_sandbox(ctx: ToolContext, args: dict) -> ToolResult:
     command_text = args.get("command")
     if not isinstance(command_text, str) or not command_text.strip():
@@ -198,6 +277,30 @@ async def run_sandbox(ctx: ToolContext, args: dict) -> ToolResult:
         return ToolResult(content="The command is too large (400 KB limit).", ok=False)
     if not CONFIG.sandbox_enabled:
         return ToolResult(content="The code sandbox is disabled by configuration.", ok=False)
+    if CONFIG.sandbox_block_private_ips:
+        hits = _private_ip_literals(command_text)
+        if hits:
+            return ToolResult(
+                content=(
+                    "Command blocked: it references private/LAN IP address(es) "
+                    f"{', '.join(sorted(set(hits)))}. The sandbox is not allowed "
+                    "to contact private network ranges directly."
+                ),
+                ok=False,
+                summary="Sandbox blocked: private IP in command",
+            )
+        recon = _network_recon_patterns(command_text)
+        if recon:
+            return ToolResult(
+                content=(
+                    "Command blocked: it references network reconnaissance "
+                    f"pattern(s) {', '.join(sorted(set(recon)))}. The sandbox "
+                    "is not allowed to probe network topology or host mount "
+                    "information."
+                ),
+                ok=False,
+                summary="Sandbox blocked: network reconnaissance pattern",
+            )
 
     podman = podman_command()
     if not podman:
@@ -239,6 +342,10 @@ async def run_sandbox(ctx: ToolContext, args: dict) -> ToolResult:
     outputs_before = _snapshot(outputs)
     workspace_before = _snapshot(workspace)
 
+    account = sandbox_account()
+    uid = account.pw_uid if account else 1000
+    gid = account.pw_gid if account else 1000
+
     network_args: list[str] = []
     if CONFIG.sandbox_network:
         for resolver in CONFIG.sandbox_dns.split(","):
@@ -264,18 +371,21 @@ async def run_sandbox(ctx: ToolContext, args: dict) -> ToolResult:
         f"--memory-swap={CONFIG.sandbox_memory}",
         f"--cpus={CONFIG.sandbox_cpus}",
         "--pids-limit=128",
+        "--ipc=none",
         "--ulimit",
         "nofile=256:256",
-        "--userns=keep-id:uid=1000,gid=1000",
+        f"--userns=keep-id:uid={uid},gid={gid}",
         "--user",
-        "1000:1000",
+        f"{uid}:{gid}",
+        "--hostname",
+        "nexus-sandbox",
         "--init",
-        "-v",
-        f"{workspace}:/workspace:rw",
-        "-v",
-        f"{uploads}:/mnt/useruploads:ro",
-        "-v",
-        f"{outputs}:/mnt/outputs:rw",
+        "--mount",
+        f"type=bind,src={workspace},dst=/workspace,rw,bind-propagation=rprivate",
+        "--mount",
+        f"type=bind,src={uploads},dst=/mnt/useruploads,ro,bind-propagation=rprivate",
+        "--mount",
+        f"type=bind,src={outputs},dst=/mnt/outputs,rw,bind-propagation=rprivate",
         "-w",
         "/workspace",
         "-e",
@@ -324,7 +434,14 @@ async def run_sandbox(ctx: ToolContext, args: dict) -> ToolResult:
         except TimeoutError:
             timed_out = True
             process.kill()
-            await process.communicate()
+            try:
+                await asyncio.wait_for(process.communicate(), timeout=10)
+            except (TimeoutError, asyncio.TimeoutError):
+                try:
+                    process.terminate()
+                except ProcessLookupError:
+                    pass
+                await process.communicate()
             stdout_b, stderr_b = b"", b""
             cleanup = await asyncio.create_subprocess_exec(
                 *podman,

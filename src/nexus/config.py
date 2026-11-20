@@ -34,6 +34,7 @@ class Config(BaseSettings):
     sandbox_podman_wrapper: str = "/usr/local/bin/nexus-sandbox-podman"
     sandbox_network: bool = True
     sandbox_dns: str = "1.1.1.1,9.9.9.9"
+    sandbox_block_private_ips: bool = True
 
     max_tool_steps: int = 10
     # Total characters of tool output kept in one turn's model context. The

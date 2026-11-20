@@ -386,6 +386,10 @@ class Database:
         await self.conn.commit()
 
     async def delete_chat(self, chat_id: str) -> None:
+        # Explicitly remove child rows instead of relying solely on ON DELETE
+        # CASCADE, so the chat is fully removed even if FK enforcement is off.
+        await self.conn.execute("DELETE FROM messages WHERE chat_id = ?", (chat_id,))
+        await self.conn.execute("DELETE FROM tasks WHERE chat_id = ?", (chat_id,))
         await self.conn.execute("DELETE FROM uploads WHERE chat_id = ?", (chat_id,))
         await self.conn.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
         await self.conn.commit()

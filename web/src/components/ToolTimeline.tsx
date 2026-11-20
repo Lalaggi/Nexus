@@ -38,7 +38,6 @@ const KIND_ORDER: Record<string, GroupKind> = {
   read_file: 'read',
   list_files: 'list',
   sandbox: 'code',
-  run_python: 'code',
 };
 
 function kindOf(event: ToolEvent): GroupKind {

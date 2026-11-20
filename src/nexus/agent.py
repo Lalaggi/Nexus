@@ -18,8 +18,11 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import logging
 import time
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -604,8 +607,8 @@ async def run_turn(
                 assistant_message_id, content, reasoning, tool_events, duration_ms=duration_ms
             )
             await db.touch_chat(chat_id)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.exception("Failed to persist assistant message for chat %s: %s", chat_id, exc)
 
         # Generate a topic-based chat title on the first nexus turn.
         try:

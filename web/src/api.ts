@@ -1,4 +1,4 @@
-import type { Attachment, StreamEvent } from './types';
+import type { Attachment, CustomModel, StreamEvent } from './types';
 import { apiUrl, authHeaders, fileUrl, withFileUrls } from './server';
 
 export class ApiError extends Error {
@@ -211,12 +211,6 @@ export function attachmentKind(mime: string): 'image' | 'pdf' | 'text' | 'other'
   if (mime === 'application/pdf') return 'pdf';
   if (mime.startsWith('text/') || mime.includes('json') || mime.includes('xml')) return 'text';
   return 'other';
-}
-
-export interface CustomModel {
-  id: string;
-  name: string;
-  model_id: string;
 }
 
 export async function listCustomModels(): Promise<CustomModel[]> {

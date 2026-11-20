@@ -17,8 +17,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import shutil
 from typing import Any
+
+logger = logging.getLogger(__name__)
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request
@@ -115,7 +118,10 @@ async def delete_chat(request: Request, chat_id: str) -> dict:
         CONFIG.chat_uploads_dir(chat_id),
     ):
         if directory.exists():
-            shutil.rmtree(directory, ignore_errors=True)
+            try:
+                shutil.rmtree(directory)
+            except OSError as exc:
+                logger.warning("Failed to remove chat directory %s: %s", directory, exc)
     return {"ok": True}
 
 
