@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Nexus app icon: foreground mark over the background panel -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <!-- One gradient across the whole N, running along the diagonal (top-left → bottom-right) -->
+    <linearGradient id="n-grad" gradientUnits="userSpaceOnUse"
+                    x1="106" y1="96" x2="406" y2="416">
+      <stop offset="0" stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#FF7F50"/>
+    </linearGradient>
+  </defs>
+  <!-- Background panel -->
+  <rect width="512" height="512" rx="112" fill="#141218"/>
+  <!-- Foreground mark -->
+  <g fill="url(#n-grad)">
+    <!-- Diagonal with top-left and bottom-right caps -->
+    <path d="M106 96 H174 L356 356 H406 V416 H338 L156 156 H106 Z"/>
+    <!-- Left stem, subtle flare below the cut -->
+    <path d="M106 164 H151 C154 190 156 212 156 240 V416 H106 Z"/>
+    <!-- Right stem, mirrored flare above the cut -->
+    <path d="M406 348 H361 C358 322 356 300 356 272 V96 H406 Z"/>
+  </g>
+</svg>

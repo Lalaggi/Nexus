@@ -20,7 +20,9 @@ import {
   ListTodo,
   Loader2,
   Menu,
+  PanelLeft,
   Plus,
+  Search,
   Settings as SettingsIcon,
   Sparkles,
   X,
@@ -217,6 +219,12 @@ export default function App() {
       }
       if (sidebarRef.current) {
         sidebarRef.current.style.transition = 'none';
+        // When dragging from closed, restore the sidebar's layout width so it
+        // stays visible while following the finger. It collapses back to zero
+        // width once it settles closed again (see .sidebar-closed .sidebar).
+        if (!sidebarOpen) {
+          sidebarRef.current.style.width = 'var(--sidebar-width)';
+        }
       }
     },
     onDrag: (deltaX) => {
@@ -260,6 +268,11 @@ export default function App() {
           if (sidebarRef.current) {
             sidebarRef.current.style.transition = '';
             sidebarRef.current.style.transform = '';
+            // When settling closed, drop the inline width so the sidebar
+            // collapses to zero layout width and the main content spreads out.
+            if (!shouldOpen) {
+              sidebarRef.current.style.width = '';
+            }
           }
           releaseHandlerRef.current = null;
         };
@@ -989,14 +1002,49 @@ export default function App() {
       <main className="main">
         <header className="topbar">
           <div className="topbar-left">
-            <button
-              type="button"
-              className="icon-btn menu-btn"
-              onClick={toggleSidebar}
-              aria-label="Toggle sidebar"
-            >
-              <Menu size={19} />
-            </button>
+            {sidebarOpen ? (
+              <button
+                type="button"
+                className="icon-btn menu-btn"
+                onClick={toggleSidebar}
+                aria-label="Toggle sidebar"
+              >
+                <Menu size={19} />
+              </button>
+            ) : (
+              <div className="menu-pill">
+                <button
+                  type="button"
+                  className="pill-btn"
+                  onClick={toggleSidebar}
+                  aria-label="Show sidebar"
+                  title="Show sidebar"
+                >
+                  <PanelLeft size={18} />
+                </button>
+                <button
+                  type="button"
+                  className="pill-btn"
+                  onClick={toggleSidebar}
+                  aria-label="Search chats"
+                  title="Search chats"
+                >
+                  <Search size={18} />
+                </button>
+                <button
+                  type="button"
+                  className="pill-btn"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void resetToNew();
+                  }}
+                  aria-label="New chat"
+                  title="New chat"
+                >
+                  <Plus size={18} />
+                </button>
+              </div>
+            )}
             <div className="topbar-title">
               <h1 title={activeChat?.title}>{activeChat?.title || 'Nexus'}</h1>
               <span className="topbar-sub">

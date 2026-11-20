@@ -65,6 +65,21 @@ export default forwardRef<HTMLDivElement, {
   return (
     <aside ref={ref} className="sidebar">
       <div className="sidebar-top">
+        <div className="sidebar-logo" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="28" height="28">
+            <defs>
+              <linearGradient id="n-grad" gradientUnits="userSpaceOnUse" x1="106" y1="96" x2="406" y2="416">
+                <stop offset="0" stop-color="#8B5CF6" />
+                <stop offset="1" stop-color="#FF7F50" />
+              </linearGradient>
+            </defs>
+            <g fill="url(#n-grad)">
+              <path d="M106 96 H174 L356 356 H406 V416 H338 L156 156 H106 Z" />
+              <path d="M106 164 H151 C154 190 156 212 156 240 V416 H106 Z" />
+              <path d="M406 348 H361 C358 322 356 300 356 272 V96 H406 Z" />
+            </g>
+          </svg>
+        </div>
         {searching ? (
           <div className="sidebar-search">
             <Search size={16} />

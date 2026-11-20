@@ -52,6 +52,7 @@ Every edit or regenerate appends a new version to a message instead of overwriti
 - Removed redundant provider-chip from topbar (showed "Nemotron · OpenRouter", duplicated catalog provider badge).
 - Removed hardcoded "Nemotron · provider" label from Sidebar footer (showed misinformation — always said Nemotron regardless of selected model).
 - Removed unused `providerName` prop from Composer.
+- Settings layout locks height with `align-items: stretch` so switching categories no longer jumps the dialog; settings sidebar gap increased to 10px between category buttons; sidebar-top icons use consistent 44px height with `space-between` justification; sidebar-footer padding balanced (16px top/bottom) with 8px margin-top.
 - Catalog cards use 20px border-radius (matching settings-section), not fully round (shape-full). Input boxes, dropdowns, buttons, and toggles stay round.
 
 ### Settings redesign ✅
