@@ -19,6 +19,9 @@ from .routes import chats, files, notes, settings
 from .tools.base import load_builtin_tools
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+# httpx logs every request at INFO; that clutters the debug log. Silence the
+# request trace while keeping the application's own error logging intact.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger("nexus")
 
 PUBLIC_API = {"/api/login", "/api/auth", "/api/health"}

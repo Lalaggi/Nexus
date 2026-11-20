@@ -100,6 +100,7 @@ export default function MessageView({
   onEdit,
   onOpenFile,
   onActivateVersion,
+  controllingUserVersionId,
 }: {
   message: Message;
   streaming?: boolean;
@@ -109,12 +110,20 @@ export default function MessageView({
   onEdit?: (message: Message) => void;
   onOpenFile?: (file: FileTarget) => void;
   onActivateVersion?: (messageId: string, versionId: string) => void;
+  controllingUserVersionId?: string;
 }) {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle');
   const copyTimer = useRef<number | null>(null);
   const isUser = message.role === 'user';
   const sources = sourceList(message.tool_events || []);
   const hasVisibleContent = Boolean(message.content?.trim());
+
+  // Scope Nexus versions to only the responses belonging to the active user
+  // timeline branch (linked via reply_to_version_id). User messages show all
+  // their own edits; Nexus messages show only responses to the selected prompt.
+  const nexusVersions = controllingUserVersionId
+    ? (message.versions || []).filter((v) => v.reply_to_version_id === controllingUserVersionId)
+    : (message.versions || []);
 
   useEffect(
     () => () => {
@@ -246,7 +255,7 @@ export default function MessageView({
 
         {!streaming && (
           <VersionSwitcher
-            versions={message.versions}
+            versions={nexusVersions}
             activeVersionId={message.active_version_id}
             onActivate={(versionId) => onActivateVersion?.(message.id, versionId)}
           />

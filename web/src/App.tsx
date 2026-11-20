@@ -417,21 +417,28 @@ export default function App() {
     method: 'POST',
     body: Record<string, unknown> | undefined,
     userLocalId?: string,
+    targetAssistantId?: string,
   ) => {
+    // When targetAssistantId is given we stream a new version into an existing
+    // assistant message (edit/regenerate on a timeline) instead of creating a
+    // placeholder, so previous versions stay available as alternate timelines.
     const localAssistantId = `local-a-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    streamingIdRef.current = localAssistantId;
-    let serverAssistantId = localAssistantId;
+    const targetId = targetAssistantId ?? localAssistantId;
+    streamingIdRef.current = targetId;
+    let serverAssistantId = targetAssistantId ?? localAssistantId;
 
-    const placeholder: Message = {
-      id: localAssistantId,
-      role: 'assistant',
-      content: '',
-      reasoning: '',
-      tool_events: [],
-      attachments: [],
-      created_at: new Date().toISOString(),
-    };
-    setMessages((previous) => [...previous, placeholder]);
+    if (!targetAssistantId) {
+      const placeholder: Message = {
+        id: localAssistantId,
+        role: 'assistant',
+        content: '',
+        reasoning: '',
+        tool_events: [],
+        attachments: [],
+        created_at: new Date().toISOString(),
+      };
+      setMessages((previous) => [...previous, placeholder]);
+    }
     setStreaming(true);
 
     const pending = { text: '', reasoning: '' };
@@ -446,7 +453,7 @@ export default function App() {
       pending.reasoning = '';
       setMessages((previous) =>
         previous.map((message) =>
-          message.id === localAssistantId
+          message.id === targetId
             ? {
                 ...message,
                 content: message.content + text,
@@ -482,6 +489,22 @@ export default function App() {
         }
         case 'meta': {
           serverAssistantId = String(event.message_id ?? localAssistantId);
+          // When streaming into an existing assistant message, switch it to the
+          // new (empty, streaming) version so previous versions stay switchable.
+          if (targetAssistantId && String(event.message_id) === targetAssistantId) {
+            setMessages((previous) =>
+              previous.map((message) =>
+                message.id === targetAssistantId
+                  ? {
+                      ...message,
+                      content: '',
+                      active_version_id: String(event.version_id ?? message.active_version_id ?? ''),
+                      versions: (event.versions as Message['versions']) ?? message.versions,
+                    }
+                  : message
+              ),
+            );
+          }
           break;
         }
         case 'title': {
@@ -513,7 +536,7 @@ export default function App() {
           flush();
           setMessages((previous) =>
             previous.map((message) =>
-              message.id === localAssistantId
+              message.id === targetId
                 ? {
                     ...message,
                     retry: {
@@ -532,7 +555,7 @@ export default function App() {
           flush();
           setMessages((previous) =>
             previous.map((message) =>
-              message.id === localAssistantId
+              message.id === targetId
                 ? {
                     ...message,
                     tool_events: [
@@ -553,7 +576,7 @@ export default function App() {
         case 'tool_result': {
           setMessages((previous) =>
             previous.map((message) =>
-              message.id === localAssistantId
+              message.id === targetId
                 ? {
                     ...message,
                     tool_events: message.tool_events.map((tool) =>
@@ -584,7 +607,7 @@ export default function App() {
           notify(text);
           setMessages((previous) =>
             previous.map((message) =>
-              message.id === localAssistantId
+              message.id === targetId
                 ? { ...message, error: text, retry: undefined }
                 : message,
             ),
@@ -604,7 +627,7 @@ export default function App() {
           const cancelled = Boolean(event.cancelled);
           setMessages((previous) =>
             previous.map((message) =>
-              message.id === localAssistantId
+              message.id === targetId
                 ? {
                     ...message,
                     id: serverAssistantId,
@@ -655,9 +678,9 @@ export default function App() {
         streamingIdRef.current = null;
         setMessages((previous) =>
           previous.map((message) =>
-            message.id === localAssistantId && !message.content && !message.tool_events.length
+            message.id === targetId && !message.content && !message.tool_events.length
               ? { ...message, content: '_No response._', retry: undefined }
-              : message.id === localAssistantId
+              : message.id === targetId
                 ? { ...message, retry: undefined }
                 : message,
           ),
@@ -672,8 +695,9 @@ export default function App() {
 
     if (editingMessageId && activeChat) {
       const editId = editingMessageId;
+      let updated: { ok?: boolean; message?: Message } | undefined;
       try {
-        await api(`/api/messages/${editId}`, {
+        updated = await api<{ ok?: boolean; message?: Message }>(`/api/messages/${editId}`, {
           method: 'PATCH',
           body: JSON.stringify({ content }),
         });
@@ -684,6 +708,23 @@ export default function App() {
       setEditingMessageId(null);
       setDraft('');
       setDraftAttachments([]);
+      const message = updated?.message;
+      if (message) {
+        setMessages((previous) =>
+          previous.map((m) =>
+            m.id === editId
+              ? {
+                  ...m,
+                  ...message,
+                  versions: message.versions ?? m.versions,
+                  active_version_id: message.active_version_id ?? m.active_version_id,
+                }
+              : m
+          ),
+        );
+      }
+      // Start a new response on the edited (alternate) timeline.
+      void regenerate();
       return;
     }
     let chat = activeChat;
@@ -726,19 +767,27 @@ export default function App() {
 
   const regenerate = () => {
     if (!activeChat || streaming) return;
-    setMessages((previous) => {
-      let lastUser = previous.length - 1;
-      while (lastUser >= 0 && previous[lastUser].role !== 'user') lastUser -= 1;
-      return previous.slice(0, lastUser + 1);
-    });
-    startStream(activeChat.id, `/api/chats/${activeChat.id}/regenerate`, 'POST', undefined);
+    // Find the assistant message after the last user message so we can append a
+    // new version to it (preserving previous versions as alternate timelines).
+    let targetId: string | undefined;
+    let lastUser = messages.length - 1;
+    while (lastUser >= 0 && messages[lastUser].role !== 'user') lastUser -= 1;
+    if (lastUser < 0) return;
+    for (let i = messages.length - 1; i > lastUser; i -= 1) {
+      if (messages[i].role === 'assistant') {
+        targetId = messages[i].id;
+        break;
+      }
+    }
+    setStreaming(true);
+    startStream(activeChat.id, `/api/chats/${activeChat.id}/regenerate`, 'POST', undefined, undefined, targetId);
   };
 
   const handleActivateVersion = async (messageId: string, versionId: string) => {
     setStreaming(false);
     try {
       const data = await api<{ messages: Message[] }>(
-        `/messages/${messageId}/versions/${versionId}/activate`,
+        `/api/messages/${messageId}/versions/${versionId}/activate`,
         { method: 'POST' }
       );
       setMessages((previous) => {
@@ -752,7 +801,7 @@ export default function App() {
         }
         return Array.from(byId.values()).sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
       });
-      notify('Switched to version');
+      console.log('[version] switched', { messageId, versionId });
     } catch (error) {
       notify(error instanceof Error ? error.message : 'Could not switch versions.');
     }
@@ -1005,11 +1054,6 @@ export default function App() {
                 setDraft(message.content || '');
                 setDraftAttachments(message.attachments || []);
                 setEditingMessageId(message.id);
-                setMessages((previous) =>
-                  previous.map((m) =>
-                    m.id === message.id ? { ...m, content: message.content || '' } : m,
-                  ),
-                );
                 window.setTimeout(() => inputRef.current?.focus(), 50);
               }}
               onOpenFile={setPreview}

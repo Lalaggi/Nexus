@@ -56,16 +56,34 @@ export default function ChatView({
   const lastMessage = messages[messages.length - 1];
   const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user');
 
+  // The user version that "controls" a given message. For a user message it's its
+  // own active version; for a Nexus message it's the active version of the nearest
+  // preceding user message. This scopes the Nexus switcher to only the responses
+  // on the selected user timeline.
+  const getControllingUserVersionId = (index: number): string | undefined => {
+    const message = messages[index];
+    if (message.role === 'user') {
+      return message.active_version_id;
+    }
+    for (let j = index - 1; j >= 0; j -= 1) {
+      if (messages[j].role === 'user') {
+        return messages[j].active_version_id;
+      }
+    }
+    return undefined;
+  };
+
   return (
     <div className="chat-scroll" ref={scroller} onScroll={onScroll}>
       <div className="chat-thread">
-        {messages.map((message) => (
+        {messages.map((message, index) => (
           <MessageView
             key={message.id}
             message={message}
             streaming={streaming && message.id === lastAssistant?.id}
             isLast={message.id === lastMessage?.id}
             isLastUser={message.id === lastUserMessage?.id}
+            controllingUserVersionId={getControllingUserVersionId(index)}
             onRegenerate={onRegenerate}
             onEdit={onEdit}
             onOpenFile={onOpenFile}

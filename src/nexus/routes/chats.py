@@ -305,15 +305,16 @@ async def regenerate(request: Request, chat_id: str):
         raise HTTPException(400, "No user message to regenerate from.")
     user_message = messages[last_user_index]
     reply_to_version_id = user_message.get("active_version_id", "")
-    trailing = messages[last_user_index + 1 :]
 
     # Regeneration appends a new version to the existing assistant message
-    # instead of creating a duplicate sibling. Any stale messages after it are
-    # removed first so the version chain stays at the tail of the chat.
-    assistant = trailing[0] if trailing and trailing[0]["role"] == "assistant" else None
-    extras = trailing[1:] if assistant is not None else trailing
-    for message in extras:
-        await db.delete_message(message["id"])
+    # instead of creating a duplicate sibling. Previous versions are kept so
+    # each user version can carry its own chain of responses (alternate
+    # timelines) that the user can switch between.
+    assistant = None
+    for message in messages[last_user_index + 1 :]:
+        if message["role"] == "assistant":
+            assistant = message
+            break
 
     if assistant is not None:
         assistant_message = await db.create_message_version(
