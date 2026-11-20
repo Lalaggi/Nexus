@@ -592,22 +592,25 @@ class Database:
             source = "edit"
         if status not in {"complete", "streaming", "error"}:
             status = "complete"
-        row = await self._fetchone(
-            "SELECT COALESCE(MAX(version), 0) + 1 AS next FROM message_versions WHERE message_id = ?",
-            (message_id,),
-        )
-        version = int(row["next"] if row else 1)
         version_id = new_id("v")
         stamp = now()
+        # Allocate the next version number inside the same INSERT so concurrent
+        # edits to one message cannot race on MAX(version) and collide on the
+        # (message_id, version) uniqueness constraint. SQLite serializes writers,
+        # so the second concurrent insert sees the first's row and bumps the
+        # version instead of duplicating it.
         await self.conn.execute(
             """INSERT INTO message_versions
                (id,message_id,version,content,reasoning,tool_events,attachments,
                 duration_ms,status,source,reply_to_version_id,created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+               SELECT ?, ?,
+                      COALESCE((SELECT MAX(version) FROM message_versions
+                                WHERE message_id = ?), 0) + 1,
+                      ?, ?, ?, ?, ?, ?, ?, ?, ?""",
             (
                 version_id,
                 message_id,
-                version,
+                message_id,
                 self._encrypt(content),
                 self._encrypt(reasoning),
                 self._encrypt(_json(tool_events or [])),

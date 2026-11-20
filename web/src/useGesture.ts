@@ -50,6 +50,11 @@ export function useDrag({
     ) {
       return;
     }
+    // Let horizontally-scrollable containers (e.g. tables) handle their own
+    // touch gestures so swiping on them doesn't drag the sidebar.
+    if (target && target.closest('table')) {
+      return;
+    }
     const touch = event.touches[0];
     const now = Date.now();
     start.current = { x: touch.clientX, y: touch.clientY, time: now };
