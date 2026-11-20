@@ -3,17 +3,18 @@
 Deliberately deferred work. This is the canonical backlog for big features; mobile
 implementation detail for items 2 and 3 stays in `MOBILE_APP_PLANS.md`.
 
-Current focus: native PDF/image reading in `read_file` (implemented). Item 5
-(429/retry hardening) is now implemented; suggested next small win: item 3
-(mobile settings) or item 2 (mobile gestures).
+Current focus: native PDF/image reading in `read_file` (implemented). Items 2
+(mobile gestures) and 3 (mobile settings redesign) are now implemented; item 5
+(429/retry hardening) is implemented; suggested next small win: item 6 (message
+editing) or item 4 (provider backend remake).
 
 ## Readiness snapshot
 
 | # | Item | Size | Risk | Best first slice |
 | --- | --- | --- | --- | --- |
 | 1 | Clarifying questions / `ask_questions` | Large (3–5 days) | Medium–high: run lifecycle, persistence, UI state | Backend question state machine + tool, then UI card |
-| 2 | Mobile gestures | Medium (1–2 days) | Medium: scroll/back-gesture conflicts | Left-edge open/close sidebar only |
-| 3 | Mobile settings redesign | Medium (2–3 days) | Low–medium: visual regressions | Responsive full-screen shell + top category chips |
+| 2 | Mobile gestures — Done | — | — | Left-edge open/close sidebar only |
+| 3 | Mobile settings redesign — Done | — | — | Responsive full-screen shell + top category chips |
 | 4 | Provider backend remake | XL (1–2 weeks, incremental) | High: provider quirks, metadata, picker | Adapter wrapper around today's client, then live `/models` cache |
 | 5 | 429/retry handling | Done | — | `src/nexus/retry.py` policy + tests, retry status event in the UI |
 | 6 | Message editing with version history | Large (4–6 days) | Medium–high: versioned message data model, UI switcher state | Version column/table + a "switch version" control on one assistant message |
@@ -65,6 +66,24 @@ GUI instead of guessing or asking in prose.
 file panel), plus a small touch/gesture hook (custom handlers or `use-gesture`).
 See also `MOBILE_APP_PLANS.md` §2.
 
+**Implemented ✅**
+
+- `web/src/useGesture.ts` (new) — drag-follow touch gesture hook with passive listeners
+  that never block scrolling or taps. Claims the gesture only on clear horizontal
+  movement past a threshold, so vertical scrolling is never interrupted.
+- `web/src/App.tsx` — swipe right from anywhere opens the chats sidebar; swipe left
+  closes it. The sidebar tracks the finger 1:1 while dragging (direct transform writes,
+  no transition), then snaps open/closed on lift with a 250ms ease transition seeded by
+  release position and velocity (directional flick threshold: quick short flicks count).
+  `prefers-reduced-motion` disables the sidebar slide animation while keeping the
+  gesture functional.
+- `web/src/components/Sidebar.tsx` — forwarded ref so the gesture hook can attach to
+  the sidebar element for transform animation.
+- `web/src/styles.css` — sidebar positioning switched from `margin-left` to
+  `transform: translateX()` so it can track touch directly; `.reduce-motion` disables
+  the slide transition.
+- Built and installed on Android (user 0 only) via `adb install -r --user 0`.
+
 ---
 
 ## 3. Mobile settings redesign
@@ -83,6 +102,24 @@ shape properly.
 **Files:** `web/src/components/SettingsDialog.tsx`, `web/src/styles.css`
 (`.settings-layout`, `.settings-sidebar`, `.settings-content`).
 See also `MOBILE_APP_PLANS.md` §1.
+
+**Implemented ✅**
+
+- `web/src/components/SettingsDialog.tsx` — on phones (≤900px) settings open as a
+  bottom sheet (~95dvh) instead of a centered modal. Categories are independent
+  collapsible cards in one scrolling column (no duplicate chip bar). Cards expand
+  and collapse with a measured `max-height` transition for smooth open/close.
+  A mobile-only "App Settings" card contains Change Server / sign out. Footer
+  shows only Save changes (the header X is cancel). "Changes apply to new
+  messages" hint removed. Desktop/tablet two-column sidebar layout preserved
+  (≥901px, `app` category filtered out). Props contract (`SettingsPatch`,
+  `onSave`/`onTest`/`onNotify`/`onSignOut`/`onClose`) unchanged; App.tsx not
+  modified.
+- `web/src/styles.css` — `.dialog` bottom sheet on phones (`bottom: 0`,
+  `height: 95dvh`, top-corner radius, slide-up animation); footer actions are
+  full-width 44px thumb-friendly buttons; `.settings-card` / `.settings-card-body`
+  expand/collapse with `grid-template-rows` + measured `max-height` transition.
+- Built and installed on Android (user 0 only) via `adb install -r --user 0`.
 
 ---
 
