@@ -15,7 +15,7 @@ export async function copyText(text: string): Promise<boolean> {
   if (window.isSecureContext && navigator.clipboard?.writeText) {
     try {
       await navigator.clipboard.writeText(text);
-      console.debug('[clipboard] copied via navigator.clipboard.writeText');
+      console.log('[clipboard] copied via navigator.clipboard.writeText');
       return true;
     } catch (error) {
       console.warn('[clipboard] navigator.clipboard.writeText failed, falling back:', error);
@@ -50,7 +50,7 @@ function legacyCopy(text: string): boolean {
   let ok = false;
   try {
     ok = document.execCommand('copy');
-    console.debug('[clipboard] execCommand(copy) result:', ok);
+    console.log('[clipboard] execCommand(copy) result:', ok);
   } catch (error) {
     console.warn('[clipboard] execCommand(copy) threw:', error);
     ok = false;
