@@ -44,6 +44,12 @@ For a release build, create a signing keystore (`keytool -genkey ...`) and confi
 
 External links (web search results, fetched pages, images) open in the system browser; file previews/downloads go through the app with the session token in the query string.
 
+## Launch splash
+
+The launch theme (`AppTheme.NoActionBarLaunch`) uses the Android 12 splash screen API through `androidx.core:core-splashscreen`, so the same branded splash appears on Android 11 and older. It shows the full app icon (`res/drawable-*/splash_icon.png`, the rounded panel plus the N mark with transparent padding) on `#2E1F52`, then switches to `AppTheme` via `postSplashScreenTheme`.
+
+The legacy `res/drawable-*/splash.png` images are generated from `assets/splash.svg` (gradient background, full icon centered at 128dp) and remain as the fallback for `SplashScreen.show()`.
+
 ## Rebuild loop
 
 After editing web source:

@@ -126,11 +126,8 @@ function groupTitle(group: Group): string {
       return count === 1 ? 'Read 1 file' : `Read ${count} files`;
     case 'list':
       return count === 1 ? 'Listed files' : `Listed files ${count} times`;
-    case 'code': {
-      const allPython = events.every((event) => event.name === 'run_python');
-      if (allPython) return count === 1 ? 'Ran Python' : `Ran Python ${count} times`;
+    case 'code':
       return count === 1 ? 'Ran a command' : `Ran ${count} commands`;
-    }
     default: {
       const name = events[0]?.name ?? 'Tool';
       return count === 1 ? name : `${name} ×${count}`;

@@ -8,13 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 - Model catalog (`model_catalog` table) so any model on NVIDIA NIM or OpenRouter can be used; Nemotron 3.5 Super VL seeded as enabled + default on NIM and enabled on OpenRouter.
-- `GET /api/models/catalog`, `POST /api/models/catalog/sync` (OpenRouter `/models`), `PATCH /api/models/catalog/{id}/toggle`, `PATCH /api/models/catalog/{id}/default`, `DELETE /api/models/catalog/{id}`.
+- `GET /api/models/catalog`, `POST /api/models/catalog/sync` (NVIDIA NIM and OpenRouter `/models`), `PATCH /api/models/catalog/{id}/toggle`, `PATCH /api/models/catalog/{id}/default`, `DELETE /api/models/catalog/{id}`.
 - `GET /api/settings` returns the full catalog plus `default_model`; `POST /api/settings/test` uses the provider's default enabled model.
 
 ### Changed
 - `resolve_provider` now takes an explicit provider + API model id; the hardcoded Nemotron registry (`CuratedModel`/`MODELS`) is removed.
 - Chats persist both `model` and `provider`; composer dropdown shows only enabled models.
 - Settings panel now manages the model catalog (search, enable, default star) instead of a single curated model.
+- Android launch splash now uses the full app icon (rounded panel + N mark) at a comfortable size through the Android 12 splash API; legacy splash images were regenerated on the branded gradient.
 
 ### Fixed
 - None.

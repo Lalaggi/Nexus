@@ -262,8 +262,20 @@ export async function deleteCatalogModel(catalog_id: string): Promise<void> {
   });
 }
 
-export async function syncCatalogModels(): Promise<{ ok: boolean; synced: number }> {
-  return api<{ ok: boolean; synced: number }>('/api/models/catalog/sync', {
+export interface CatalogSyncProviderResult {
+  ok: boolean;
+  synced: number;
+  error?: string;
+}
+
+export interface CatalogSyncResult {
+  ok: boolean;
+  synced: number;
+  providers?: Record<string, CatalogSyncProviderResult>;
+}
+
+export async function syncCatalogModels(): Promise<CatalogSyncResult> {
+  return api<CatalogSyncResult>('/api/models/catalog/sync', {
     method: 'POST',
   });
 }

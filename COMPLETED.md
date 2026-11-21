@@ -40,12 +40,12 @@ Every edit or regenerate appends a new version to a message instead of overwriti
 ### Model catalog ✅
 - Model-agnostic provider backend: any model on NVIDIA NIM or OpenRouter can be used; the hardcoded Nemotron registry is replaced by a database-backed `model_catalog` table (`provider`, `model_id`, `name`, `enabled`, `is_default`, `source`).
 - Nemotron 3.5 Super VL seeded as enabled + default on NIM and enabled on OpenRouter (works out of the box with either key).
-- `GET /api/models/catalog`, `POST /api/models/catalog/sync` (OpenRouter `/models` fetch), `PATCH .../toggle`, `PATCH .../default`, `DELETE .../catalog/{id}` endpoints.
+- `GET /api/models/catalog`, `POST /api/models/catalog/sync` (fetches both NVIDIA NIM and OpenRouter `/models`; syncs every provider with a configured key, or one when `provider` is given), `PATCH .../toggle`, `PATCH .../default`, `DELETE .../catalog/{id}` endpoints.
 - `GET /api/settings` returns the full catalog plus `default_model`; `POST /api/settings/test` uses the provider's default enabled model.
 - `resolve_provider(db, provider, model_id)` resolves an explicit provider + API model id to a `ProviderSpec` and key.
 - Chats persist both `model` and `provider`; composer dropdown shows only enabled models.
 - Frontend selector (flat list, no provider grouping): default model at top, enabled models alphabetical beneath, "Show all"/"Hide all models" button toggles disabled models alphabetical. Search auto-includes disabled matches. Pretty display names shown, raw API model IDs never renamed, provider label "NVIDIA" (not "NIM"), filled star for default (enabled models only), Material 3 toggle switches. Only Nemotron 3.5 Super VL enabled by default on NIM and OpenRouter; all discovered models added disabled.
-- Model catalog panel includes manual "Add model" form for providers without a public model list (e.g. NIM).
+- Model catalog panel includes manual "Add model" form for models not returned by a provider's `/models` endpoint.
 - Provider settings panel reduced to just the two API key fields (NIM + OpenRouter); provider cards, description, default model ID override, custom model section, and test connection removed — all covered by the model catalog.
 - Composer model dropdown: removed stale "Custom model ID" entry.
 - Material 3 styling throughout: switches use colorOutline/colorPrimaryContainer track and colorOnSurface/colorPrimary handle per m3 specs (less round thumb, 18px); filled text inputs use surface-container-low with outline-variant border and primary focus state; consistent 40px height density.
@@ -73,6 +73,18 @@ Every edit or regenerate appends a new version to a message instead of overwriti
 - Copy code blocks and messages with a legacy fallback for plain-HTTP LAN origins.
 - Copy success logged at `console.log` level.
 
+## Codebase hygiene ✅
+
+### Frontend cleanup
+- Removed the duplicate `CustomModel` interface in `web/src/types.ts`; a single declaration remains.
+- Removed the dead `run_python` mapping from `KIND_ORDER` and the unreachable "Ran Python" title branch in `ToolTimeline.tsx` (the backend registers `sandbox`, not `run_python`).
+
+### Backend robustness
+- `tools/sandbox.py`: resolved the sandbox account's real `pw_uid`/`pw_gid` via `pwd.getpwnam(CONFIG.sandbox_account)` and used them for `--userns=keep-id` and `--user`, with a `1000:1000` development fallback instead of hardcoding.
+- `tools/sandbox.py`: sandbox timeouts now kill the process, wait up to 10s for `communicate()`, then `terminate()` if still alive before the final wait, so a stuck container can no longer hang the tool.
+- `agent.py`: the `run_turn` `finally` block now logs persistence failures with `logger.exception` instead of silently swallowing them.
+- `db.py` / `routes/chats.py`: `delete_chat` explicitly deletes `messages`, `tasks`, and `uploads` rows rather than relying on cascade, and workspace/outputs/uploads removal logs an `OSError` warning instead of using `ignore_errors=True`.
+
 ## Mobile app (Capacitor Android) ✅
 
 ### Mixed content / networking
@@ -90,6 +102,12 @@ Every edit or regenerate appends a new version to a message instead of overwriti
 - `android:screenOrientation="portrait"` in `AndroidManifest.xml` — locked to portrait on phone.
 - `styles.xml` defines `AppTheme` / `AppTheme.NoActionBarLaunch` with `statusBarColor` / `navigationBarColor` set to `#141218` (Material 3 surface).
 - `MainActivity` uses edge-to-edge mode + `WindowInsetsCompat` padding so content stays clear of status/nav bars.
+
+### Launch splash
+- Enabled the Android 12 splash screen API (`AppTheme.NoActionBarLaunch` now inherits `Theme.SplashScreen`) with `postSplashScreenTheme` pointing back at `AppTheme`, so the launch splash no longer falls back to the system's oversized adaptive foreground.
+- Added `splash_icon` drawables (all densities) built from the full app icon — rounded background panel plus the N mark — with transparent padding, so the icon renders at a comfortable size on `#2E1F52`.
+- Regenerated the legacy `drawable-*/splash.png` images (portrait and landscape) from `assets/splash.svg`: branded gradient background with the full icon centered at 128dp instead of filling the screen.
+- `capacitor.config.ts` splash `backgroundColor` updated to `#2E1F52` to match.
 
 ### Mobile UI fixes
 - Markdown tables: `white-space: nowrap` on `th`/`td` so wide tables scroll horizontally instead of stretching rows vertically.

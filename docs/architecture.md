@@ -81,7 +81,7 @@ SQLite with WAL journal, foreign keys, and secure_delete. Tables: `chats`, `mess
 
 ### Model catalog
 
-Nexus is model-agnostic. Instead of a hardcoded registry, available models live in the `model_catalog` table (`provider`, `model_id`, `name`, `enabled`, `is_default`, `source`). Nemotron 3.5 Super VL is seeded as **enabled + default** on NIM and **enabled** on OpenRouter so a fresh instance works out of the box. Users search the catalog, enable models they want, and pick one as default; only enabled models appear in the message composer dropdown. The catalog can be synced from OpenRouter's public `/models` endpoint via `POST /api/models/catalog/sync`, or entries can be added manually for NIM.
+Nexus is model-agnostic. Instead of a hardcoded registry, available models live in the `model_catalog` table (`provider`, `model_id`, `name`, `enabled`, `is_default`, `source`). Nemotron 3.5 Super VL is seeded as **enabled + default** on NIM and **enabled** on OpenRouter so a fresh instance works out of the box. Users search the catalog, enable models they want, and pick one as default; only enabled models appear in the message composer dropdown. The catalog can be synced from both providers' OpenAI-compatible `/models` endpoints via `POST /api/models/catalog/sync`, or entries can be added manually.
 
 ## Versioning
 

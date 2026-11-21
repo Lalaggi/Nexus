@@ -201,8 +201,16 @@ export default function SettingsDialog({
   const handleSyncCatalog = async () => {
     setSyncing(true);
     try {
-      await syncCatalogModels();
-      onNotify('Model catalog synced from OpenRouter.');
+      const result = await syncCatalogModels();
+      setCatalogModels(await listCatalogModels());
+      const skipped = Object.entries(result.providers ?? {})
+        .filter(([, value]) => !value.ok)
+        .map(([id]) => (id === 'nim' ? 'NVIDIA NIM' : id === 'openrouter' ? 'OpenRouter' : id));
+      if (skipped.length) {
+        onNotify(`Synced ${result.synced} models. Skipped ${skipped.join(' and ')}.`);
+      } else {
+        onNotify(`Synced ${result.synced} models from NVIDIA NIM and OpenRouter.`);
+      }
     } catch (error) {
       onNotify(error instanceof Error ? error.message : 'Catalog sync failed.');
     } finally {
@@ -846,7 +854,7 @@ function ModelCatalogPanel({
           disabled={syncing}
         >
           {syncing ? <Loader2 size={15} className="spin" /> : <RefreshCw size={15} />}
-          Sync from OpenRouter
+          Sync models
         </button>
         <div className="catalog-search">
           <Search size={16} />

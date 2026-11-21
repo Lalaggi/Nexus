@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hmac
+import re
 import time
 from collections import defaultdict, deque
 
@@ -66,6 +67,65 @@ def _hint(key: str) -> str:
     if not key:
         return ""
     return "…" + key[-4:] if len(key) > 8 else "saved"
+
+
+_SYNC_PROVIDER_LABELS = {"nim": "NVIDIA NIM", "openrouter": "OpenRouter"}
+
+# Common acronyms in NIM model ids that should stay uppercase in the display name.
+_MODEL_NAME_ACRONYMS = {
+    "ai": "AI",
+    "asr": "ASR",
+    "dpo": "DPO",
+    "gguf": "GGUF",
+    "it": "IT",
+    "llm": "LLM",
+    "moe": "MoE",
+    "ocr": "OCR",
+    "pii": "PII",
+    "qa": "QA",
+    "rag": "RAG",
+    "sft": "SFT",
+    "tts": "TTS",
+    "vl": "VL",
+    "vlm": "VLM",
+}
+
+
+def _provider_base_url(provider: str) -> str:
+    if provider == "nim":
+        return (
+            CONFIG.nim_base_url.strip() or "https://integrate.api.nvidia.com/v1"
+        ).rstrip("/")
+    return (
+        CONFIG.openrouter_base_url.strip() or "https://openrouter.ai/api/v1"
+    ).rstrip("/")
+
+
+def _pretty_model_name(model_id: str) -> str:
+    """Turn a raw model id like ``nvidia/nemotron-3.5-super-vl-120b-a12b`` into
+    a readable name. The raw id is still what gets sent to the provider."""
+    tail = model_id.rsplit("/", 1)[-1]
+    words: list[str] = []
+    for token in re.split(r"[-_]+", tail):
+        if not token:
+            continue
+        lowered = token.lower()
+        if lowered in _MODEL_NAME_ACRONYMS:
+            words.append(_MODEL_NAME_ACRONYMS[lowered])
+            continue
+        version = re.fullmatch(r"(\d+(?:\.\d+)*)([a-z]*)", lowered)
+        if version:
+            words.append(version.group(1) + version.group(2).upper())
+            continue
+        # GPU-ish tokens such as "a12b" or "h100" read better fully uppercased.
+        chip = re.fullmatch(r"([a-z])(\d+)([a-z]*)", lowered)
+        if chip:
+            words.append(
+                chip.group(1).upper() + chip.group(2) + chip.group(3).upper()
+            )
+            continue
+        words.append(token[:1].upper() + token[1:])
+    return " ".join(words) or model_id
 
 
 # Small in-process throttle. Single-user app, so this is about slowing down a
@@ -289,44 +349,81 @@ class SyncBody(BaseModel):
 async def sync_model_catalog_endpoint(
     request: Request, body: SyncBody | None = None
 ) -> dict:
-    """Fetch OpenRouter's public model list and upsert it into the catalog.
+    """Fetch each provider's model list and upsert it into the catalog.
 
-    NIM does not publish a comparably open model list, so NIM entries are
-    added manually through the settings UI; this sync only covers OpenRouter.
+    Both NVIDIA NIM and OpenRouter expose an OpenAI-compatible ``/models``
+    endpoint, so the same sync covers both. When ``provider`` is omitted, every
+    provider with a configured API key is synced. Discovered models are added
+    disabled; existing entries keep their enabled/default state.
     """
     db = db_of(request)
     keys = await api_keys(db)
-    key = keys.get("openrouter", "").strip()
-    if not key:
-        raise HTTPException(400, "An OpenRouter API key is required to sync models.")
-    base_url = (
-        CONFIG.openrouter_base_url.rstrip("/")
-        if CONFIG.openrouter_base_url.strip()
-        else "https://openrouter.ai/api/v1"
-    )
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(
-                f"{base_url}/models",
-                headers={"Authorization": f"Bearer {key}"},
-            )
-            response.raise_for_status()
-            payload = response.json()
-    except Exception as exc:
-        raise HTTPException(400, f"OpenRouter sync failed: {exc}") from exc
+    requested = (body.provider or "").strip().lower() if body else ""
+    if requested and requested not in _SYNC_PROVIDER_LABELS:
+        raise HTTPException(400, "Provider must be nim or openrouter.")
+    providers = [requested] if requested else ["nim", "openrouter"]
 
+    results: dict[str, dict] = {}
+    total = 0
+    for provider in providers:
+        key = keys.get(provider, "").strip()
+        if not key:
+            results[provider] = {
+                "ok": False,
+                "synced": 0,
+                "error": f"No {_SYNC_PROVIDER_LABELS[provider]} API key configured.",
+            }
+            continue
+        try:
+            synced = await _sync_provider_models(db, provider, key)
+        except Exception as exc:
+            results[provider] = {"ok": False, "synced": 0, "error": str(exc)}
+            continue
+        results[provider] = {"ok": True, "synced": synced}
+        total += synced
+
+    if total == 0 and all(not result["ok"] for result in results.values()):
+        errors = "; ".join(
+            f"{_SYNC_PROVIDER_LABELS[provider]}: {result['error']}"
+            for provider, result in results.items()
+            if not result["ok"]
+        )
+        raise HTTPException(400, f"Model sync failed. {errors}")
+
+    return {"ok": True, "synced": total, "providers": results}
+
+
+async def _sync_provider_models(db: Database, provider: str, key: str) -> int:
+    base_url = _provider_base_url(provider)
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.get(
+            f"{base_url}/models",
+            headers={"Authorization": f"Bearer {key}", "Accept": "application/json"},
+        )
+        response.raise_for_status()
+        payload = response.json()
+
+    items = payload.get("data", []) if isinstance(payload, dict) else payload
     synced = 0
-    for item in payload.get("data", []):
+    for item in items:
+        if not isinstance(item, dict):
+            continue
         model_id = item.get("id")
         if not model_id:
             continue
-        # OpenRouter ids look like "author/name" or "author/name:free".
-        name = item.get("name") or model_id.split("/")[-1]
+        existing = await db.get_model_catalog_entry_by_model(provider, model_id)
+        if provider == "openrouter":
+            # OpenRouter publishes a proper display name; prefer it.
+            name = item.get("name") or _pretty_model_name(model_id)
+        else:
+            # NIM only returns ids. Keep curated names (e.g. the seeded
+            # Nemotron entry) and derive a readable name for new models.
+            name = (existing or {}).get("name") or _pretty_model_name(model_id)
         await db.upsert_model_catalog_entry(
-            "openrouter", model_id, name, source="discovered"
+            provider, model_id, name, source="discovered"
         )
         synced += 1
-    return {"ok": True, "synced": synced}
+    return synced
 
 
 @router.post("/models/catalog")
@@ -335,9 +432,9 @@ async def add_model_catalog_endpoint(
 ) -> dict:
     """Manually add a model to the catalog.
 
-    Used for providers like NIM that do not publish an open model list. The
-    model is added disabled by default so it does not appear in the composer
-    until the user enables it.
+    Useful for models that are not returned by a provider's ``/models``
+    endpoint. The model is added disabled by default so it does not appear in
+    the composer until the user enables it.
     """
     db = db_of(request)
     provider = body.provider.strip().lower()

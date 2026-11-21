@@ -121,7 +121,7 @@ CRUD for user notes: `GET`, `GET /{key}`, `POST`, `PATCH /{key}`, `DELETE /{key}
 
 `GET /api/models/catalog` — list all catalog entries with `id`, `provider`, `model_id`, `name`, `enabled`, `is_default`, `source`.
 
-`POST /api/models/catalog/sync` — fetch OpenRouter's public `/models` list and upsert it into the catalog (requires an OpenRouter API key). NIM entries are added manually.
+`POST /api/models/catalog/sync` — fetch each provider's `/models` list and upsert it into the catalog. With no body, every provider that has a configured API key is synced; pass `{ "provider": "nim" }` or `{ "provider": "openrouter" }` to sync one. Discovered models are added disabled and existing enabled/default state is preserved.
 
 `PATCH /api/models/catalog/{catalog_id}/toggle` — `{ enabled: boolean }` enable or disable a model. Disabling the current default picks a new default from the remaining enabled models.
 

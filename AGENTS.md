@@ -170,7 +170,7 @@ Follow these when touching code; they match `docs/development.md` and
 - Type hints on public functions; `logger = logging.getLogger(__name__)`.
 - Tests: `pytest` + `pytest-asyncio` (`asyncio_mode = "auto"`), files in
   `tests/`. Run with `uv run pytest`.
-- Linting/formatting are **planned, not configured** (TODO items 13–14: add
+- Linting/formatting are **planned, not configured** (TODO items 6–7: add
   `ruff` + `mypy` to dev dependencies). Do not introduce a new linter without
   updating `pyproject.toml` and `TODO.md`.
 
@@ -180,7 +180,7 @@ Follow these when touching code; they match `docs/development.md` and
   `lucide-react` icons.
 - Dev server: `npm --prefix web run dev`; build: `npm --prefix web run build`;
   type-check: `npx tsc --noEmit`.
-- No ESLint/Prettier or frontend unit tests yet (TODO item 13).
+- No ESLint/Prettier or frontend unit tests yet (TODO item 6).
 
 ### Commits
 

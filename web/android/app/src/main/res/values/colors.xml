@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- Background used by the Android 12+ launch splash. Chosen so the dark
+       rounded panel of the full app icon stays visible. -->
+  <color name="splash_background">#2E1F52</color>
+</resources>

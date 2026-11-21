@@ -36,7 +36,7 @@ Test files live in `tests/`:
 
 ### Linting / formatting (planned)
 
-No Python linter/formatter is configured yet. See [TODO.md](../TODO.md) item 14: add `ruff` (lint + format) and `mypy` to `pyproject.toml` dev dependencies, with `ruff check`, `ruff format --check`, and `mypy` as CI steps.
+No Python linter/formatter is configured yet. See [TODO.md](../TODO.md) item 7: add `ruff` (lint + format) and `mypy` to `pyproject.toml` dev dependencies, with `ruff check`, `ruff format --check`, and `mypy` as CI steps.
 
 ### Known cleanup items (backend)
 
@@ -71,7 +71,7 @@ npx tsc --noEmit
 
 ### Linting / formatting (planned)
 
-No ESLint/Prettier or frontend unit tests yet. See [TODO.md](../TODO.md) item 13.
+No ESLint/Prettier or frontend unit tests yet. See [TODO.md](../TODO.md) item 6.
 
 ### Known cleanup items (frontend)
 
