@@ -99,13 +99,25 @@ export default function SettingsDialog({
   const [test, setTest] = useState<TestResult | null>(null);
   // Which category panel is active on desktop (two-column layout).
   const [category, setCategory] = useState<Category>('provider');
-  // Which cards are expanded on mobile (independent collapsible sections).
+  // Which cards are expanded on mobile (accordion behavior - only one open at a time).
   const [openCards, setOpenCards] = useState<Record<Category, boolean>>({
     provider: true,
     personalisation: false,
     stats: false,
     app: false,
   });
+
+  // Open a card and close others (accordion behavior).
+  const openCard = useCallback((id: Category) => {
+    setOpenCards((prev) => {
+      const next = { ...prev, [id]: true };
+      // Close other cards
+      (Object.keys(next) as Category[]).forEach((key) => {
+        if (key !== id) next[key] = false;
+      });
+      return next;
+    });
+  }, []);
   // Narrow-screen (phone) layout: below ~901px we use a bottom sheet + cards.
   const [narrow, setNarrow] = useState(typeof window !== 'undefined' && window.innerWidth <= 900);
   // One ref per collapsible card so we can measure content height for animation.
@@ -392,7 +404,11 @@ export default function SettingsDialog({
                 open={openCards.provider}
                 onToggle={(event) => {
                   const isOpen = (event.target as HTMLDetailsElement).open;
-                  setOpenCards((prev) => ({ ...prev, provider: isOpen }));
+                  if (isOpen) {
+                    openCard('provider');
+                  } else {
+                    setOpenCards((prev) => ({ ...prev, provider: false }));
+                  }
                   animateCard('provider', isOpen);
                 }}
               >
@@ -445,7 +461,11 @@ export default function SettingsDialog({
                 open={openCards.personalisation}
                 onToggle={(event) => {
                   const isOpen = (event.target as HTMLDetailsElement).open;
-                  setOpenCards((prev) => ({ ...prev, personalisation: isOpen }));
+                  if (isOpen) {
+                    openCard('personalisation');
+                  } else {
+                    setOpenCards((prev) => ({ ...prev, personalisation: false }));
+                  }
                   animateCard('personalisation', isOpen);
                 }}
               >
@@ -480,7 +500,11 @@ export default function SettingsDialog({
                 open={openCards.stats}
                 onToggle={(event) => {
                   const isOpen = (event.target as HTMLDetailsElement).open;
-                  setOpenCards((prev) => ({ ...prev, stats: isOpen }));
+                  if (isOpen) {
+                    openCard('stats');
+                  } else {
+                    setOpenCards((prev) => ({ ...prev, stats: false }));
+                  }
                   animateCard('stats', isOpen);
                 }}
               >
@@ -500,7 +524,11 @@ export default function SettingsDialog({
                 open={openCards.app}
                 onToggle={(event) => {
                   const isOpen = (event.target as HTMLDetailsElement).open;
-                  setOpenCards((prev) => ({ ...prev, app: isOpen }));
+                  if (isOpen) {
+                    openCard('app');
+                  } else {
+                    setOpenCards((prev) => ({ ...prev, app: false }));
+                  }
                   animateCard('app', isOpen);
                 }}
               >

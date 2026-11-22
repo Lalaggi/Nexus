@@ -4064,6 +4064,8 @@ a {
   }
 
   .settings-card[open] .settings-card-body {
+    max-height: 60vh; /* Limit height so long content scrolls internally */
+    overflow-y: auto;
     padding: 14px 16px 18px;
   }
 
