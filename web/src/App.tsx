@@ -19,11 +19,7 @@ import {
   FolderOpen,
   ListTodo,
   Loader2,
-  Menu,
-  PanelLeft,
   Plus,
-  Search,
-  Settings as SettingsIcon,
   Sparkles,
   X,
 } from 'lucide-react';
@@ -61,9 +57,12 @@ import SettingsDialog, { type SettingsPatch, type TestResult } from './component
 import Login from './components/Login';
 import Connect from './components/Connect';
 import { Brandmark } from './components/Brandmark';
+import { NexusLogo, SidebarToggleIcon } from './components/NexusIcons';
 import { useDrag } from './useGesture';
 
 type Boot = 'loading' | 'login' | 'ready' | 'error';
+
+const MOBILE_QUERY = '(max-width: 900px)';
 
 export default function App() {
   const [boot, setBoot] = useState<Boot>('loading');
@@ -82,7 +81,12 @@ export default function App() {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [streaming, setStreaming] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isMobile, setIsMobile] = useState(
+    () => window.matchMedia(MOBILE_QUERY).matches,
+  );
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => !window.matchMedia(MOBILE_QUERY).matches,
+  );
   const [panel, setPanel] = useState<'tasks' | 'files' | null>(null);
   const [panelTab, setPanelTab] = useState<'tasks' | 'files'>('tasks');
   const [files, setFiles] = useState<FileItem[]>([]);
@@ -173,7 +177,13 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (window.innerWidth < 900) setSidebarOpen(false);
+    const media = window.matchMedia(MOBILE_QUERY);
+    const handle = () => setIsMobile(media.matches);
+    media.addEventListener('change', handle);
+    return () => media.removeEventListener('change', handle);
+  }, []);
+
+  useEffect(() => {
     const onPop = () => {
       const id = new URLSearchParams(window.location.search).get('c');
       if (id) void loadChatRef.current(id);
@@ -261,18 +271,19 @@ export default function App() {
 
       if (sidebarRef.current) {
         sidebarRef.current.style.transition =
-          'transform 250ms cubic-bezier(0.2, 0, 0, 1)';
+          'width 250ms cubic-bezier(0.2, 0, 0, 1), transform 250ms cubic-bezier(0.2, 0, 0, 1)';
+        // Let the open/closed class drive the target width so it animates in
+        // step with the transform instead of snapping when the gesture ends.
+        // Only drop the drag-time inline width when settling closed; when
+        // opening, the class already matches the width we restored.
+        if (!shouldOpen) sidebarRef.current.style.width = '';
         sidebarRef.current.style.transform = `translateX(${targetTX}px)`;
 
         const handler = () => {
           if (sidebarRef.current) {
             sidebarRef.current.style.transition = '';
             sidebarRef.current.style.transform = '';
-            // When settling closed, drop the inline width so the sidebar
-            // collapses to zero layout width and the main content spreads out.
-            if (!shouldOpen) {
-              sidebarRef.current.style.width = '';
-            }
+            sidebarRef.current.style.width = '';
           }
           releaseHandlerRef.current = null;
         };
@@ -1002,54 +1013,65 @@ export default function App() {
       <main className="main">
         <header className="topbar">
           <div className="topbar-left">
-            {sidebarOpen ? (
+            {isMobile ? (
+              !sidebarOpen && (
+                <div className="menu-pill">
+                  <button
+                    type="button"
+                    className="pill-btn"
+                    onClick={toggleSidebar}
+                    aria-label="Show sidebar"
+                    title="Show sidebar"
+                  >
+                    <SidebarToggleIcon />
+                  </button>
+                </div>
+              )
+            ) : sidebarOpen ? (
               <button
                 type="button"
                 className="icon-btn menu-btn"
                 onClick={toggleSidebar}
-                aria-label="Toggle sidebar"
+                aria-label="Hide sidebar"
+                title="Hide sidebar"
               >
-                <Menu size={19} />
+                <SidebarToggleIcon filled />
               </button>
             ) : (
-              <div className="menu-pill">
+              <>
                 <button
                   type="button"
-                  className="pill-btn"
-                  onClick={toggleSidebar}
-                  aria-label="Show sidebar"
-                  title="Show sidebar"
-                >
-                  <PanelLeft size={18} />
-                </button>
-                <button
-                  type="button"
-                  className="pill-btn"
-                  onClick={toggleSidebar}
-                  aria-label="Search chats"
-                  title="Search chats"
-                >
-                  <Search size={18} />
-                </button>
-                <button
-                  type="button"
-                  className="pill-btn"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void resetToNew();
-                  }}
+                  className="topbar-logo"
+                  onClick={() => void resetToNew()}
                   aria-label="New chat"
                   title="New chat"
                 >
-                  <Plus size={18} />
+                  <NexusLogo size={26} />
                 </button>
-              </div>
+                <div className="menu-pill">
+                  <button
+                    type="button"
+                    className="pill-btn"
+                    onClick={toggleSidebar}
+                    aria-label="Show sidebar"
+                    title="Show sidebar"
+                  >
+                    <SidebarToggleIcon />
+                  </button>
+                  <button
+                    type="button"
+                    className="pill-btn"
+                    onClick={() => void resetToNew()}
+                    aria-label="New chat"
+                    title="New chat"
+                  >
+                    <Plus size={18} />
+                  </button>
+                </div>
+              </>
             )}
             <div className="topbar-title">
               <h1 title={activeChat?.title}>{activeChat?.title || 'Nexus'}</h1>
-              <span className="topbar-sub">
-                {activeChat ? `${messages.length} messages` : 'Ready when you are'}
-              </span>
             </div>
           </div>
           <div className="topbar-actions">
@@ -1072,15 +1094,17 @@ export default function App() {
             >
               <FolderOpen size={18} />
             </button>
-            <button
-              type="button"
-              className="icon-btn"
-              onClick={() => void resetToNew()}
-              aria-label="New chat"
-              title="New chat"
-            >
-              <Plus size={18} />
-            </button>
+            {isMobile && (
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => void resetToNew()}
+                aria-label="New chat"
+                title="New chat"
+              >
+                <Plus size={18} />
+              </button>
+            )}
           </div>
         </header>
 

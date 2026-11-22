@@ -62,6 +62,17 @@ Every edit or regenerate appends a new version to a message instead of overwriti
 - Smooth expand/collapse animation with measured `max-height` transition.
 - Props contract unchanged (`SettingsPatch`, `onSave`/`onTest`/`onNotify`/`onSignOut`/`onClose`); `App.tsx` not modified.
 
+### Responsive header & sidebar chrome ✅
+- One shared `SidebarToggleIcon` whose small left pane is filled when the sidebar is open and outlined when it is closed (`web/src/components/NexusIcons.tsx`). The Nexus "N" mark moved into the same module so the sidebar and collapsed topbar use one definition.
+- Desktop, sidebar open: the topbar starts with the filled toggle; the sidebar header holds search and refresh. No duplicate search or new-chat buttons in the topbar.
+- Desktop, sidebar closed: the topbar shows the Nexus logo followed by a pill containing the unfilled toggle and new chat.
+- Mobile, sidebar closed: the topbar pill contains only the unfilled toggle; tasks, files, and new chat stay in the topbar actions.
+- Mobile, sidebar open: the drawer's header shows the filled toggle next to search and refresh; the covered topbar does not render a second toggle.
+- The Nexus logo in the sidebar and the collapsed topbar is a button that returns to the new-chat/home screen.
+- Removed the topbar message-count subtitle and the composer hint line ("Enter to send · Shift+Enter…").
+- Sidebar collapse now animates layout width and transform together. A fixed-width `.sidebar-inner` panel prevents the contents from being squeezed while the layout slot shrinks.
+- The tasks/files sheet stays mounted for its 320ms close animation instead of unmounting instantly; the backdrop fades out and both stop receiving pointer events while closing.
+
 ### Mobile gestures ✅
 - `web/src/useGesture.ts` — drag-follow touch gesture hook with passive listeners that never block scrolling or taps.
 - Swipe right from anywhere opens the chats sidebar; swipe left closes it. The sidebar tracks the finger 1:1 while dragging, then snaps open/closed on lift with a 250ms ease transition seeded by release position and velocity (directional flick threshold).

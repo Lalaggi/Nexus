@@ -2,6 +2,17 @@
 
 Nexus is a streaming chat interface backed by a tool-using model. This guide covers the model, the built-in tools, files and links, and the visible goal/task system.
 
+## Interface
+
+The chrome adapts to the available width, but each control appears only once.
+
+- **Desktop (≥901px), sidebar open:** the topbar starts with a filled sidebar toggle, then the chat title; Tasks and Files sit on the right. Search and chat refresh live in the sidebar header, and New chat is the sidebar button.
+- **Desktop, sidebar closed:** the topbar starts with the Nexus logo, followed by a pill containing the outlined sidebar toggle and New chat. Clicking the logo also returns to the new-chat/home screen.
+- **Mobile (≤900px), sidebar closed:** the topbar pill contains only the outlined sidebar toggle. Tasks, Files, and New chat stay in the topbar actions.
+- **Mobile, sidebar open:** the drawer header shows the filled sidebar toggle beside search and refresh; the covered topbar does not render a second toggle.
+
+The sidebar toggle's small left pane is filled while the sidebar is open and outlined while it is closed. Both the sidebar and the tasks/files panel animate closed instead of snapping shut.
+
 ## The model
 
 Nexus is model-agnostic: any model on NVIDIA NIM or OpenRouter can be used. Models live in a searchable catalog in Settings; **Nemotron 3.5 VL Super** (NVIDIA, 120B vision-language, 1M-token context, native tool calling) is **enabled and set as default by default**, so a fresh instance works out of the box with either a NIM key or an OpenRouter key.

@@ -182,13 +182,19 @@ a {
   min-width: 0;
 }
 
+.topbar-left {
+  flex: 1;
+}
+
 .topbar-actions {
   gap: 4px;
+  flex: none;
 }
 
 .topbar-title {
+  flex: 1;
   min-width: 0;
-  padding-left: 2px;
+  padding-left: 4px;
 }
 
 .topbar-title h1 {
@@ -199,15 +205,33 @@ a {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: min(52vw, 620px);
+  max-width: 100%;
 }
 
-.topbar-sub {
+.topbar-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  margin-left: 2px;
+  padding: 2px;
+  border: 0;
+  border-radius: var(--shape-sm);
+  background: transparent;
+  color: inherit;
+  transition: background var(--dur-short) var(--ease-emphasized);
+}
+
+.topbar-logo:hover {
+  background: var(--surface-container-high);
+}
+
+.topbar-logo:active {
+  transform: scale(0.94);
+}
+
+.topbar-logo svg {
   display: block;
-  font-size: 10.5px;
-  color: var(--muted);
-  letter-spacing: 0.01em;
-  margin-top: 1px;
 }
 
 .menu-btn {
@@ -219,8 +243,9 @@ a {
 .menu-pill {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 7px 3px 6px;
+  gap: 4px;
+  padding: 3px;
+  flex: none;
   border: 1px solid var(--outline-variant);
   border-radius: var(--shape-full);
   background: var(--surface-container-high);
@@ -340,14 +365,24 @@ a {
   width: var(--sidebar-width);
   flex: none;
   height: 100dvh;
+  overflow: visible;
+  transform: translateX(0);
+  transition:
+    width var(--dur-med) var(--ease-emphasized),
+    transform var(--dur-med) var(--ease-emphasized);
+  z-index: 30;
+}
+
+/* The inner panel keeps a fixed width so collapsing the layout slot never
+   squeezes its contents — the whole panel slides out with the slot instead. */
+.sidebar-inner {
+  width: var(--sidebar-width);
+  height: 100%;
   display: flex;
   flex-direction: column;
   padding: 12px 12px 10px;
   background: var(--surface-container-low);
   border-right: 1px solid var(--outline-variant);
-  transform: translateX(0);
-  transition: transform var(--dur-med) var(--ease-emphasized);
-  z-index: 30;
 }
 
 .sidebar-closed .sidebar {
@@ -356,8 +391,6 @@ a {
      into the freed space instead of leaving a gap where the sidebar was. */
   width: 0;
   min-width: 0;
-  overflow: hidden;
-  border-right: none;
 }
 
 .sidebar-top {
@@ -373,7 +406,21 @@ a {
   display: flex;
   align-items: center;
   flex: none;
-  margin-left: 1px;
+  margin-left: -1px;
+  padding: 2px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  transition: background var(--dur-short) var(--ease-emphasized);
+}
+
+.sidebar-logo:hover {
+  background: var(--surface-container);
+}
+
+.sidebar-logo:active {
+  transform: scale(0.94);
 }
 
 .sidebar-logo svg {
@@ -989,15 +1036,6 @@ a {
 
 .composer-edit-banner button:hover {
   opacity: 1;
-}
-
-.composer-note {
-  margin: 9px 0 0;
-  text-align: center;
-  font-size: 10.5px;
-  color: var(--muted);
-  opacity: 0.75;
-  letter-spacing: 0.01em;
 }
 
 .composer-attachments {
@@ -2290,6 +2328,16 @@ a {
   box-shadow: -24px 0 60px rgba(0, 0, 0, 0.42);
   z-index: 46;
   animation: slideIn var(--dur-med) var(--ease-emphasized-decel);
+}
+
+.sheet.is-closing {
+  pointer-events: none;
+  animation: slideOut var(--dur-med) var(--ease-emphasized) forwards;
+}
+
+.sheet-backdrop.is-closing {
+  pointer-events: none;
+  animation: fadeOut var(--dur-short) var(--ease-emphasized) forwards;
 }
 
 .sheet-head {
@@ -3719,6 +3767,18 @@ a {
   }
 }
 
+@keyframes slideOut {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes fadeOut {
+  to {
+    opacity: 0;
+  }
+}
+
 @keyframes dialogIn {
   from {
     opacity: 0;
@@ -3786,6 +3846,7 @@ a {
 
   .sidebar-closed .sidebar {
     margin-left: 0;
+    width: var(--sidebar-width);
     transform: translateX(calc(-1 * var(--sidebar-width) - 4px));
   }
 
@@ -3803,11 +3864,9 @@ a {
     height: 58px;
   }
 
-  .topbar-sub,
   .provider-chip {
     display: none;
   }
-
   .chat-thread {
     padding: 18px 16px 28px;
     gap: 22px;
@@ -4023,10 +4082,6 @@ a {
 }
 
 @media (max-width: 520px) {
-  .topbar-title h1 {
-    max-width: 38vw;
-  }
-
   .topbar-actions .icon-btn {
     width: 34px;
     height: 34px;
@@ -4037,10 +4092,6 @@ a {
   }
 
   .suggestions {
-    display: none;
-  }
-
-  .composer-note {
     display: none;
   }
 

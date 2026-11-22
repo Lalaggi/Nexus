@@ -205,9 +205,6 @@ export default function Composer({
           event.target.value = '';
         }}
       />
-      <p className="composer-note">
-        {streaming ? 'Generating — press the square to stop' : 'Enter to send · Shift+Enter for a new line'}
-      </p>
     </div>
   );
 }

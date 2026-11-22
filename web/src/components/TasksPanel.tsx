@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -81,12 +82,38 @@ export default function TasksPanel({
   const active = tasks.filter((task) => task.status === 'in_progress').length;
   const percent = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
 
-  if (!open) return null;
+  // Keep the sheet mounted long enough to play its closing animation instead
+  // of unmounting the instant `open` flips to false.
+  const [rendered, setRendered] = useState(open);
+  const [closing, setClosing] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setRendered(true);
+      setClosing(false);
+      return;
+    }
+    if (!rendered) return;
+    setClosing(true);
+    const timer = window.setTimeout(() => {
+      setRendered(false);
+      setClosing(false);
+    }, 340);
+    return () => window.clearTimeout(timer);
+  }, [open, rendered]);
+
+  if (!rendered) return null;
 
   return (
     <>
-      <div className="sheet-backdrop" onClick={onClose} />
-      <aside className="sheet tasks-sheet" aria-label="Tasks and files">
+      <div
+        className={`sheet-backdrop${closing ? ' is-closing' : ''}`}
+        onClick={onClose}
+      />
+      <aside
+        className={`sheet tasks-sheet${closing ? ' is-closing' : ''}`}
+        aria-label="Tasks and files"
+      >
         <header className="sheet-head">
           <div>
             <span className="sheet-kicker">Workspace</span>

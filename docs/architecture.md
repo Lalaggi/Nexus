@@ -64,7 +64,7 @@ React + TypeScript + Vite, packaged with Capacitor for Android.
 | `useGesture.ts` | Drag-follow touch gesture hook |
 | `types.ts` | TypeScript interfaces (Chat, Message, ToolEvent, SettingsSnapshot, ...) |
 | `styles.css` | Global styles |
-| `components/` | `ChatView`, `MessageView`, `Composer`, `Sidebar`, `SettingsDialog`, `TasksPanel`, `ToolTimeline`, `VersionSwitcher`, `FilePreview`, `Markdown`, `Connect`, `Login`, `Welcome`, `Brandmark` |
+| `components/` | `ChatView`, `MessageView`, `Composer`, `Sidebar`, `SettingsDialog`, `TasksPanel`, `ToolTimeline`, `VersionSwitcher`, `FilePreview`, `Markdown`, `Connect`, `Login`, `Welcome`, `Brandmark`, `NexusIcons` |
 
 ## Data flow — one chat turn
 

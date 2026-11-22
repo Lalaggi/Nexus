@@ -16,12 +16,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - Chats persist both `model` and `provider`; composer dropdown shows only enabled models.
 - Settings panel now manages the model catalog (search, enable, default star) instead of a single curated model.
 - Android launch splash now uses the full app icon (rounded panel + N mark) at a comfortable size through the Android 12 splash API; legacy splash images were regenerated on the branded gradient.
+- Responsive header/sidebar chrome: one filled/unfilled sidebar toggle icon, a single new-chat action per layout, the Nexus logo in the collapsed desktop topbar, and logo-as-home behavior. Removed the duplicated topbar search button, the topbar message-count subtitle, and the composer hint line.
+- Sidebar collapse now animates its layout width alongside the slide, using a fixed-width inner panel so its contents are not squeezed. The tasks/files sheet gets a matching closing animation.
 
 ### Fixed
-- None.
+- Sidebar collapse on desktop snapped the main content instead of animating.
+- Tasks/files panel disappeared instantly when closed instead of sliding out.
 
 ### Removed
 - Hardcoded curated model registry in `providers.py`.
+- Duplicate topbar search and new-chat buttons, the topbar message-count subtitle, and the composer "Enter to send" hint.
 
 ## [0.1.0] — 2026-11-20
 
